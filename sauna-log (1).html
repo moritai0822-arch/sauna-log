@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🧖 サウナログ</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1C1C1E; color: #E8EDF2; font-family: 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif; }
+  input, textarea, button { font-family: inherit; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #1C1C1E; }
+  ::-webkit-scrollbar-thumb { background: #35353e; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+
+// ── Supabase設定 ──────────────────────────────────────────────
+const SUPABASE_URL = "https://lnqzfphbytpouweilfnh.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxucXpmcGhieXRwb3V3ZWlsZm5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxMTA1MDQsImV4cCI6MjA5ODY4NjUwNH0.JNzYWFOzv3rMEe9YyrQLpZe9cPKX6QJKiPvI9AdgTcQ";
+const API = SUPABASE_URL + "/rest/v1/saunas";
+const ROOM_ID = "sauna-friends-room-1"; // ← 身内で共通のID（変更可）
+
+const HEADERS = {
+  "Content-Type": "application/json",
+  "apikey": SUPABASE_KEY,
+  "Authorization": "Bearer " + SUPABASE_KEY,
+  "Prefer": "return=representation",
+};
+
+async function dbFetch() {
+  const res = await fetch(API + "?room_id=eq." + encodeURIComponent(ROOM_ID) + "&order=created_at.asc", { headers: HEADERS });
+  if (!res.ok) throw new Error(res.status + ": " + await res.text());
+  return res.json();
+}
+async function dbInsert(row) {
+  const res = await fetch(API, { method: "POST", headers: HEADERS, body: JSON.stringify(row) });
+  if (!res.ok) throw new Error(res.status + ": " + await res.text());
+  return res.json();
+}
+async function dbUpdate(id, row) {
+  const res = await fetch(API + "?id=eq." + encodeURIComponent(id), { method: "PATCH", headers: HEADERS, body: JSON.stringify(row) });
+  if (!res.ok) throw new Error(res.status + ": " + await res.text());
+  return res.json();
+}
+async function dbDelete(id) {
+  const res = await fetch(API + "?id=eq." + encodeURIComponent(id), { method: "DELETE", headers: HEADERS });
+  if (!res.ok) throw new Error(res.status + ": " + await res.text());
+}
+
+// ── 定数 ──────────────────────────────────────────────────────
+const CATEGORIES = [
+  { key: "sauna",    label: "サウナの質",   icon: "🔥", hint: "温度（しっかりとした熱さがあるか）、湿度（呼吸しやすい一定の湿度があるか）、テレビや音楽の有無、サ室からの景色" },
+  { key: "mizuburo", label: "水風呂",       icon: "💧", hint: "温度（理想13〜18℃）、深さ、サ室からの距離" },
+  { key: "totonoi",  label: "整いスペース", icon: "🌿", hint: "外気浴か、椅子の種類（フルフラット系があるか）、景色・雰囲気、静かさ、雨対策があるか" },
+  { key: "konzatsu", label: "混雑度",       icon: "👥", hint: "施設自体の混雑度、整いスペースの混雑度" },
+  { key: "furo",     label: "風呂",         icon: "♨️", hint: "広さ、種類" },
+  { key: "manner",   label: "衛生面",       icon: "🧼", hint: "施設の綺麗さ、利用者の衛生マナー" },
+  { key: "price",    label: "値段",         icon: "💴", hint: "ホテルの場合はホテル施設も鑑みての総合評価" },
+];
+const STAR_LABELS = ["", "最悪", "悪い", "普通", "良い", "最高"];
+
+function avg(scores) {
+  const vals = Object.values(scores).filter(Boolean);
+  if (!vals.length) return 0;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+function customAvg(scores, keys) {
+  if (!keys || !keys.length) return avg(scores);
+  const vals = keys.map(k => scores[k] || 0).filter(Boolean);
+  if (!vals.length) return 0;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+function genId() { return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
+
+// ── ScoreCircle ───────────────────────────────────────────────
+function ScoreCircle({ value, size }) {
+  size = size || 72;
+  const r = size/2-6, circ = 2*Math.PI*r, dash = (value/5)*circ;
+  const color = value>=4 ? "#4AB8D4" : value>=3 ? "#C8956A" : value>0 ? "#e05858" : "#3a3a40";
+  return (
+    <svg width={size} height={size} style={{transform:"rotate(-90deg)",flexShrink:0}}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#2a2a2e" strokeWidth={6}/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={6}
+        strokeDasharray={dash + " " + circ} strokeLinecap="round"
+        style={{transition:"stroke-dasharray 0.5s ease"}}/>
+      <text x={size/2} y={size/2+1} textAnchor="middle" dominantBaseline="middle"
+        fill={color} fontSize={size>=72?20:size>=56?14:12} fontWeight="700" fontFamily="system-ui"
+        style={{transform:"rotate(90deg)",transformOrigin:(size/2)+"px "+(size/2)+"px"}}>
+        {value>0 ? value.toFixed(1) : "—"}
+      </text>
+    </svg>
+  );
+}
+
+// ── StarPicker ────────────────────────────────────────────────
+function StarPicker({ value, onChange }) {
+  const [hovered, setHovered] = useState(0);
+  return (
+    <div style={{display:"flex",gap:4,alignItems:"center"}}>
+      {[1,2,3,4,5].map(n => {
+        const filled = n <= (hovered || value);
+        return (
+          <button key={n} onClick={() => onChange(n)}
+            onMouseEnter={() => setHovered(n)} onMouseLeave={() => setHovered(0)}
+            style={{background:"none",border:"none",cursor:"pointer",fontSize:28,lineHeight:1,padding:"2px 1px",
+              color:filled?"#4AB8D4":"#3a3a40",transform:filled?"scale(1.1)":"scale(1)",
+              transition:"all 0.15s",filter:filled?"drop-shadow(0 0 5px #4AB8D440)":"none"}}>★</button>
+        );
+      })}
+      {(hovered||value) > 0 && <span style={{color:"#8888a0",fontSize:12,marginLeft:4}}>{STAR_LABELS[hovered||value]}</span>}
+    </div>
+  );
+}
+
+// ── Toast ─────────────────────────────────────────────────────
+function Toast({ msg, type }) {
+  if (!msg) return null;
+  const isErr = type === "error";
+  return (
+    <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",
+      background:isErr?"#3a1a1a":"#1a3a2a",border:"1px solid "+(isErr?"#5a2a2a":"#2a5a3a"),
+      borderRadius:10,padding:"10px 22px",color:isErr?"#e05858":"#5adf9a",
+      fontSize:14,fontWeight:600,zIndex:9999,boxShadow:"0 4px 20px #00000080",whiteSpace:"nowrap"}}>
+      {msg}
+    </div>
+  );
+}
+
+// ── RatingPage ────────────────────────────────────────────────
+function RatingPage({ onSave, editTarget, onCancelEdit, saving }) {
+  const empty = Object.fromEntries(CATEGORIES.map(c => [c.key, 0]));
+  const [name,   setName]   = useState(editTarget ? editTarget.name   : "");
+  const [scores, setScores] = useState(editTarget ? editTarget.scores : empty);
+  const [note,   setNote]   = useState(editTarget ? (editTarget.note||"") : "");
+  const [author, setAuthor] = useState(editTarget ? (editTarget.author||"") : "");
+  const [openHint, setOpenHint] = useState(null);
+
+  useEffect(() => {
+    if (editTarget) {
+      setName(editTarget.name); setScores(editTarget.scores);
+      setNote(editTarget.note||""); setAuthor(editTarget.author||"");
+    } else {
+      setName(""); setScores(empty); setNote(""); setAuthor("");
+    }
+  }, [editTarget ? editTarget.id : null]);
+
+  const overall = avg(scores);
+  const allFilled = name.trim() && Object.values(scores).every(v => v > 0);
+
+  const iStyle = { width:"100%", background:"#26262c", border:"1.5px solid #35353e",
+    borderRadius:10, color:"#E8EDF2", outline:"none", transition:"border-color 0.2s" };
+
+  return (
+    <div style={{maxWidth:520,margin:"0 auto",padding:"0 0 80px"}}>
+
+      {/* ルーム情報 */}
+      <div style={{background:"linear-gradient(135deg,#0e2a1a,#0e1a2a)",border:"1px solid #1a4a2a",borderRadius:12,padding:"12px 16px",marginBottom:20}}>
+        <div style={{color:"#5adf9a",fontSize:12,fontWeight:700,marginBottom:2}}>🔗 共有ルーム</div>
+        <div style={{color:"#3a6a4a",fontSize:12}}>このファイルを仲間に送れば同じデータを共有できます</div>
+        <div style={{color:"#2a5a3a",fontSize:11,marginTop:4,fontFamily:"monospace"}}>Room: {ROOM_ID}</div>
+      </div>
+
+      {/* サウナ名 */}
+      <div style={{marginBottom:14}}>
+        <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:7,textTransform:"uppercase"}}>サウナ名</label>
+        <input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="例：サウナしきじ"
+          style={{...iStyle,padding:"13px 15px",fontSize:18,fontWeight:600}}
+          onFocus={e=>e.target.style.borderColor="#4AB8D4"} onBlur={e=>e.target.style.borderColor="#35353e"}/>
+      </div>
+
+      {/* 投稿者名 */}
+      <div style={{marginBottom:18}}>
+        <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:7,textTransform:"uppercase"}}>投稿者名（任意）</label>
+        <input type="text" value={author} onChange={e=>setAuthor(e.target.value)} placeholder="例：サウナ太郎"
+          style={{...iStyle,padding:"11px 15px",fontSize:15}}
+          onFocus={e=>e.target.style.borderColor="#4AB8D4"} onBlur={e=>e.target.style.borderColor="#35353e"}/>
+      </div>
+
+      {/* 総合スコア */}
+      <div style={{background:"linear-gradient(135deg,#26262c,#1e2028)",borderRadius:16,padding:"16px 20px",marginBottom:18,display:"flex",alignItems:"center",gap:16,border:"1px solid #2e2e36"}}>
+        <ScoreCircle value={overall} size={76}/>
+        <div>
+          <div style={{color:"#8888a0",fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>総合評価</div>
+          <div style={{color:"#E8EDF2",fontSize:14,marginTop:4}}>
+            {overall===0?"項目を評価してください":overall>=4.5?"最高のサウナ 🏆":overall>=4?"かなりおすすめ ✨":overall>=3?"まあまあ 👍":overall>=2?"少し物足りない 😐":"改善が必要 😓"}
+          </div>
+        </div>
+      </div>
+
+      {/* 評価項目 */}
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+        {CATEGORIES.map(cat => (
+          <div key={cat.key} style={{background:"#26262c",borderRadius:12,border:scores[cat.key]?"1px solid #35353e":"1px solid #2c2c32",overflow:"hidden"}}>
+            <div style={{padding:"13px 15px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:20}}>{cat.icon}</span>
+                  <span style={{color:"#E8EDF2",fontWeight:600,fontSize:15}}>{cat.label}</span>
+                  <button onClick={()=>setOpenHint(openHint===cat.key?null:cat.key)}
+                    style={{background:"none",border:"none",cursor:"pointer",color:openHint===cat.key?"#4AB8D4":"#5a5a6a",fontSize:14,padding:"0 3px",lineHeight:1}}>ℹ</button>
+                </div>
+                {scores[cat.key]>0 && <span style={{background:"#1C1C1E",borderRadius:20,padding:"2px 10px",color:"#4AB8D4",fontSize:13,fontWeight:700}}>{scores[cat.key]}.0</span>}
+              </div>
+              <StarPicker value={scores[cat.key]} onChange={v=>setScores(s=>({...s,[cat.key]:v}))}/>
+            </div>
+            {openHint===cat.key && (
+              <div style={{borderTop:"1px solid #2e2e36",padding:"9px 15px",background:"#1e1e24",color:"#7a9ab0",fontSize:12,lineHeight:1.7}}>
+                📋 {cat.hint}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* メモ */}
+      <div style={{marginTop:14}}>
+        <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:7,textTransform:"uppercase"}}>メモ（任意）</label>
+        <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="感想や特記事項など..." rows={3}
+          style={{...iStyle,padding:"11px 15px",fontSize:14,resize:"vertical"}}
+          onFocus={e=>e.target.style.borderColor="#4AB8D4"} onBlur={e=>e.target.style.borderColor="#35353e"}/>
+      </div>
+
+      {/* ボタン */}
+      <div style={{display:"flex",gap:10,marginTop:18}}>
+        {editTarget && <button onClick={onCancelEdit} style={{flex:1,padding:"14px",background:"#26262c",border:"1px solid #35353e",borderRadius:12,color:"#8888a0",fontSize:15,fontWeight:600,cursor:"pointer"}}>キャンセル</button>}
+        <button
+          onClick={()=>allFilled&&!saving&&onSave({name:name.trim(),scores,note,author:author.trim(),id:editTarget?editTarget.id:null})}
+          disabled={!allFilled||saving}
+          style={{flex:2,padding:"14px",background:!allFilled||saving?"#2a2a2e":"linear-gradient(135deg,#4AB8D4,#2e8fa8)",border:"none",borderRadius:12,color:!allFilled||saving?"#5a5a6a":"#fff",fontSize:16,fontWeight:700,cursor:!allFilled||saving?"not-allowed":"pointer",transition:"all 0.3s",boxShadow:allFilled&&!saving?"0 4px 20px #4AB8D430":"none"}}>
+          {saving?"💾 保存中…":editTarget?"更新する":"このサウナを保存"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── RankingPage ───────────────────────────────────────────────
+function RankingPage({ saunas, onEdit, onDelete, deleting }) {
+  const [selectedKeys, setSelectedKeys] = useState([]);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const isAllMode = selectedKeys.length === 0;
+
+  const toggleKey = k => setSelectedKeys(p => p.includes(k) ? p.filter(x=>x!==k) : [...p,k]);
+  const sorted = [...saunas].sort((a,b) =>
+    customAvg(b.scores, isAllMode?null:selectedKeys) - customAvg(a.scores, isAllMode?null:selectedKeys)
+  );
+  const medals = ["#FFD700","#C0C0C0","#CD7F32"];
+
+  return (
+    <div style={{maxWidth:520,margin:"0 auto",padding:"0 0 80px"}}>
+
+      {/* ルーム情報 */}
+      <div style={{background:"linear-gradient(135deg,#0e2a1a,#0e1a2a)",border:"1px solid #1a4a2a",borderRadius:12,padding:"12px 16px",marginBottom:20}}>
+        <div style={{color:"#5adf9a",fontSize:12,fontWeight:700,marginBottom:2}}>🔗 共有ルーム</div>
+        <div style={{color:"#3a6a4a",fontSize:12}}>このファイルを仲間に送れば同じデータを共有できます</div>
+        <div style={{color:"#2a5a3a",fontSize:11,marginTop:4,fontFamily:"monospace"}}>Room: {ROOM_ID}</div>
+      </div>
+
+      {/* フィルター */}
+      <div style={{marginBottom:18}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div style={{color:"#8888a0",fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>重視する項目を選択</div>
+          {!isAllMode && <button onClick={()=>setSelectedKeys([])} style={{background:"none",border:"none",cursor:"pointer",color:"#5a5a6a",fontSize:12,textDecoration:"underline"}}>リセット</button>}
+        </div>
+        <div style={{marginBottom:8}}>
+          <button onClick={()=>setSelectedKeys([])} style={{padding:"7px 14px",borderRadius:20,fontSize:13,fontWeight:600,border:isAllMode?"1.5px solid #4AB8D4":"1.5px solid #35353e",background:isAllMode?"#4AB8D420":"#26262c",color:isAllMode?"#4AB8D4":"#5a5a6a",cursor:"pointer",transition:"all 0.15s"}}>🏆 総合（全項目）</button>
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {CATEGORIES.map(cat => {
+            const active = selectedKeys.includes(cat.key);
+            return (
+              <button key={cat.key} onClick={()=>toggleKey(cat.key)}
+                style={{padding:"7px 14px",borderRadius:20,fontSize:13,fontWeight:600,border:active?"1.5px solid #C8956A":"1.5px solid #35353e",background:active?"#C8956A20":"#26262c",color:active?"#C8956A":"#8888a0",cursor:"pointer",position:"relative",transition:"all 0.15s"}}>
+                {cat.icon} {cat.label}
+                {active && <span style={{position:"absolute",top:-5,right:-5,background:"#C8956A",borderRadius:"50%",width:16,height:16,fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",color:"#1C1C1E"}}>✓</span>}
+              </button>
+            );
+          })}
+        </div>
+        {!isAllMode && (
+          <div style={{marginTop:10,padding:"9px 14px",background:"#C8956A15",borderRadius:10,border:"1px solid #C8956A30",fontSize:13,color:"#C8956A"}}>
+            <strong>{selectedKeys.map(k=>CATEGORIES.find(c=>c.key===k)?CATEGORIES.find(c=>c.key===k).label:"").join(" + ")}</strong> の平均でランキング中
+          </div>
+        )}
+      </div>
+
+      {saunas.length === 0 ? (
+        <div style={{textAlign:"center",padding:"60px 20px",color:"#5a5a6a",fontSize:15}}>
+          <div style={{fontSize:48,marginBottom:16}}>🔥</div>
+          まだサウナが登録されていません<br/>
+          <span style={{fontSize:13,color:"#45454e"}}>評価タブからサウナを追加しましょう</span>
+        </div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {sorted.map((sauna, i) => {
+            const score = customAvg(sauna.scores, isAllMode?null:selectedKeys);
+            const isTop = i < 3;
+            return (
+              <div key={sauna.id} style={{background:isTop?"linear-gradient(135deg,#26262c,#2a2820)":"#26262c",borderRadius:14,border:isTop?"1px solid "+medals[i]+"40":"1px solid #2e2e36",padding:"14px 15px",display:"flex",alignItems:"center",gap:11}}>
+                <div style={{width:34,height:34,borderRadius:"50%",flexShrink:0,background:isTop?medals[i]+"20":"#1C1C1E",border:"2px solid "+(isTop?medals[i]:"#35353e"),display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:isTop?medals[i]:"#5a5a6a"}}>{i+1}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{color:"#E8EDF2",fontWeight:700,fontSize:15,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sauna.name}</div>
+                  <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap"}}>
+                    {CATEGORIES.map(cat => {
+                      const isSel = selectedKeys.includes(cat.key);
+                      return <span key={cat.key} style={{fontSize:11,color:!isAllMode&&isSel?"#C8956A":"#5a5a6a",fontWeight:!isAllMode&&isSel?700:400}}>{cat.icon}{sauna.scores[cat.key]||"—"}</span>;
+                    })}
+                  </div>
+                  {sauna.note && <div style={{color:"#5a5a6a",fontSize:12,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sauna.note}</div>}
+                  <div style={{color:"#45454e",fontSize:11,marginTop:3}}>
+                    {sauna.author && <span style={{color:"#6a7a8a",marginRight:6}}>👤{sauna.author}</span>}
+                    {new Date(sauna.created_at).toLocaleDateString("ja-JP")}
+                  </div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                  <ScoreCircle value={score} size={52}/>
+                  {!isAllMode && <div style={{fontSize:10,color:"#8888a0",textAlign:"center"}}>総合{avg(sauna.scores).toFixed(1)}</div>}
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  <button onClick={()=>onEdit(sauna)} style={{background:"#1C1C1E",border:"1px solid #35353e",borderRadius:7,padding:"5px 9px",color:"#8888a0",fontSize:12,cursor:"pointer"}}>✏️</button>
+                  {confirmDelete===sauna.id
+                    ? <button onClick={()=>{onDelete(sauna.id);setConfirmDelete(null);}} disabled={deleting} style={{background:"#3a1a1a",border:"1px solid #5a2020",borderRadius:7,padding:"5px 9px",color:"#e05858",fontSize:12,cursor:"pointer"}}>確認</button>
+                    : <button onClick={()=>setConfirmDelete(sauna.id)} style={{background:"#1C1C1E",border:"1px solid #35353e",borderRadius:7,padding:"5px 9px",color:"#5a5a6a",fontSize:12,cursor:"pointer"}}>🗑️</button>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main App ──────────────────────────────────────────────────
+function App() {
+  const [page,       setPage]       = useState("rate");
+  const [saunas,     setSaunas]     = useState([]);
+  const [editTarget, setEditTarget] = useState(null);
+  const [loading,    setLoading]    = useState(true);
+  const [loadError,  setLoadError]  = useState(null);
+  const [saving,     setSaving]     = useState(false);
+  const [deleting,   setDeleting]   = useState(false);
+  const [toast,      setToast]      = useState({msg:"",type:"ok"});
+  const pollRef = useRef(null);
+
+  const showToast = (msg, type) => {
+    setToast({msg, type: type||"ok"});
+    setTimeout(() => setToast({msg:"",type:"ok"}), 3000);
+  };
+
+  const loadData = useCallback(async () => {
+    try {
+      const data = await dbFetch();
+      setSaunas(data);
+      setLoadError(null);
+    } catch(e) {
+      console.error(e);
+      setLoadError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+    pollRef.current = setInterval(loadData, 15000);
+    return () => clearInterval(pollRef.current);
+  }, []);
+
+  const handleSave = async (data) => {
+    setSaving(true);
+    try {
+      if (data.id) {
+        await dbUpdate(data.id, {name:data.name,scores:data.scores,note:data.note,author:data.author,updated_at:new Date().toISOString()});
+        setSaunas(p => p.map(s => s.id===data.id ? {...s,...data} : s));
+        showToast("✅ 更新しました！");
+        setEditTarget(null); setPage("ranking");
+      } else {
+        const row = {id:genId(),room_id:ROOM_ID,name:data.name,scores:data.scores,note:data.note,author:data.author,created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+        const ins = await dbInsert(row);
+        setSaunas(p => [...p, ins[0]||row]);
+        showToast("✅ 保存しました！");
+      }
+    } catch(e) {
+      console.error(e);
+      showToast("保存失敗: " + e.message, "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    setDeleting(true);
+    try {
+      await dbDelete(id);
+      setSaunas(p => p.filter(s => s.id!==id));
+      showToast("削除しました");
+    } catch(e) {
+      showToast("削除失敗: " + e.message, "error");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  if (loading) return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+      <div style={{fontSize:48}}>🧖</div>
+      <div style={{color:"#5a5a6a",fontSize:15}}>Supabaseからデータを読み込み中...</div>
+    </div>
+  );
+
+  if (loadError) return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"0 16px"}}>
+      <div style={{maxWidth:460,width:"100%",background:"#2a1a1a",border:"1px solid #5a2a2a",borderRadius:14,padding:"28px"}}>
+        <div style={{fontSize:40,textAlign:"center",marginBottom:14}}>⚠️</div>
+        <div style={{color:"#e05858",fontWeight:700,fontSize:16,textAlign:"center",marginBottom:12}}>接続に失敗しました</div>
+        <code style={{display:"block",background:"#1a1a1a",padding:"10px 14px",borderRadius:8,color:"#e08888",fontSize:12,wordBreak:"break-all",marginBottom:16,lineHeight:1.6}}>{loadError}</code>
+        <div style={{color:"#7a5a5a",fontSize:12,marginBottom:18,lineHeight:1.7}}>
+          SupabaseのSQL Editorで以下を確認してください：<br/>
+          • RLSポリシーが設定されているか<br/>
+          • テーブル名が "saunas" か<br/>
+          • インターネット接続があるか
+        </div>
+        <button onClick={()=>{setLoading(true);setLoadError(null);loadData();}} style={{width:"100%",padding:"13px",background:"linear-gradient(135deg,#4AB8D4,#2e8fa8)",border:"none",borderRadius:10,color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer"}}>
+          🔄 再試行
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{minHeight:"100vh"}}>
+      {/* ヘッダー */}
+      <div style={{background:"linear-gradient(180deg,#1a1a20,#1C1C1E)",borderBottom:"1px solid #26262c",padding:"16px 14px 0",position:"sticky",top:0,zIndex:10}}>
+        <div style={{maxWidth:520,margin:"0 auto"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:13}}>
+            <span style={{fontSize:28}}>🧖</span>
+            <div>
+              <h1 style={{margin:0,fontSize:20,fontWeight:800,letterSpacing:"-0.02em"}}>サウナログ</h1>
+              <div style={{color:"#5a5a6a",fontSize:11}}>
+                {saunas.length>0 ? saunas.length+"施設を記録中" : "サウナを評価・記録しよう"}
+                {saving && <span style={{color:"#4AB8D4",marginLeft:8}}>💾 保存中…</span>}
+              </div>
+            </div>
+          </div>
+          <div style={{display:"flex"}}>
+            {[
+              {key:"rate",    label: editTarget ? "✏️ 編集中" : "⭐ 評価する"},
+              {key:"ranking", label: "🏆 ランキング" + (saunas.length>0?" ("+saunas.length+")":"")},
+            ].map(tab => (
+              <button key={tab.key} onClick={()=>{setPage(tab.key);if(tab.key==="rate"&&page==="rate")setEditTarget(null);}}
+                style={{flex:1,padding:"11px 0",fontSize:14,fontWeight:700,background:"none",border:"none",cursor:"pointer",color:page===tab.key?"#4AB8D4":"#5a5a6a",borderBottom:page===tab.key?"2px solid #4AB8D4":"2px solid transparent",transition:"all 0.2s"}}>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* コンテンツ */}
+      <div style={{padding:"18px 12px"}}>
+        {page==="rate"
+          ? <RatingPage onSave={handleSave} editTarget={editTarget} onCancelEdit={()=>{setEditTarget(null);setPage("ranking");}} saving={saving}/>
+          : <RankingPage saunas={saunas} onEdit={s=>{setEditTarget(s);setPage("rate");}} onDelete={handleDelete} deleting={deleting}/>}
+      </div>
+
+      <Toast msg={toast.msg} type={toast.type}/>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
