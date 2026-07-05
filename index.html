@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🧖 サウナログ</title>
+<title>🧖 サ絶日記</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
@@ -58,10 +58,10 @@ async function dbDelete(id) {
 const CATEGORIES = [
   { key: "sauna",    label: "サウナの質",   icon: "🔥", hint: "温度（しっかりとした熱さがあるか）、湿度（呼吸しやすい一定の湿度があるか）、テレビや音楽の有無、サ室からの景色" },
   { key: "mizuburo", label: "水風呂",       icon: "💧", hint: "温度（理想13〜18℃）、深さ、サ室からの距離" },
-  { key: "totonoi",  label: "整いスペース", icon: "🌿", hint: "外気浴か、椅子の種類（フルフラット系があるか）、景色・雰囲気、静かさ、雨対策があるか" },
+  { key: "totonoi",  label: "整いスペース", icon: "🌿", hint: "水風呂からの距離、外気浴か、椅子の種類（フルフラット系があるか）、景色・雰囲気、静かさ、雨対策があるか" },
   { key: "konzatsu", label: "混雑度",       icon: "👥", hint: "施設自体の混雑度、整いスペースの混雑度" },
-  { key: "furo",     label: "風呂",         icon: "♨️", hint: "広さ、種類" },
-  { key: "manner",   label: "衛生面",       icon: "🧼", hint: "施設の綺麗さ、利用者の衛生マナー" },
+  { key: "furo",     label: "風呂",         icon: "♨️", hint: "広さ、種類、景色・雰囲気" },
+  { key: "manner",   label: "衛生・マナー",       icon: "🧼", hint: "施設の綺麗さ、利用者のマナー" },
   { key: "price",    label: "値段",         icon: "💴", hint: "ホテルの場合はホテル施設も鑑みての総合評価" },
 ];
 const STAR_LABELS = ["", "最悪", "悪い", "普通", "良い", "最高"];
