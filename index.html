@@ -25,7 +25,6 @@ const SUPABASE_URL = "https://lnqzfphbytpouweilfnh.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxucXpmcGhieXRwb3V3ZWlsZm5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxMTA1MDQsImV4cCI6MjA5ODY4NjUwNH0.JNzYWFOzv3rMEe9YyrQLpZe9cPKX6QJKiPvI9AdgTcQ";
 const API = SUPABASE_URL + "/rest/v1/saunas";
 const ROOM_ID = "sauna-friends-room-1";
-
 const HEADERS = {
   "Content-Type": "application/json",
   "apikey": SUPABASE_KEY,
@@ -55,23 +54,22 @@ async function dbDelete(id) {
 
 // ── 定数 ──────────────────────────────────────────────────────
 const FACILITY_TYPES = [
-  { key: "onsen",   label: "温浴施設",               icon: "♨️" },
-  { key: "hotel",   label: "ホテル",                 icon: "🏨" },
+  { key: "onsen",   label: "温浴施設",                  icon: "♨️" },
+  { key: "hotel",   label: "ホテル",                    icon: "🏨" },
   { key: "private", label: "プライベートサウナ（一棟貸し）", icon: "🏡" },
 ];
-
 const CATEGORIES = [
   { key: "sauna",    label: "サウナの質",   icon: "🔥", hint: "温度（しっかりとした熱さがあるか）、湿度（呼吸しやすい一定の湿度があるか）、テレビや音楽の有無、サ室からの景色" },
   { key: "mizuburo", label: "水風呂",       icon: "💧", hint: "温度（理想13〜18℃）、深さ、サ室からの距離" },
   { key: "totonoi",  label: "整いスペース", icon: "🌿", hint: "外気浴か、椅子の種類（フルフラット系があるか）、景色・雰囲気、静かさ、雨対策があるか" },
   { key: "konzatsu", label: "混雑度",       icon: "👥", hint: "施設自体の混雑度、整いスペースの混雑度" },
   { key: "furo",     label: "風呂",         icon: "♨️", hint: "広さ、種類" },
-  { key: "manner",   label: "衛生・マナー",       icon: "🧼", hint: "施設の綺麗さ、利用者のマナー" },
+  { key: "manner",   label: "衛生面",       icon: "🧼", hint: "施設の綺麗さ、利用者の衛生マナー" },
   { key: "price",    label: "値段",         icon: "💴", hint: "ホテルの場合はホテル施設も鑑みての総合評価" },
 ];
-
 const STAR_LABELS = ["", "最悪", "悪い", "普通", "良い", "最高"];
 
+// ── ユーティリティ ─────────────────────────────────────────────
 function avg(scores) {
   const vals = Object.values(scores).filter(Boolean);
   if (!vals.length) return 0;
@@ -88,7 +86,39 @@ function countFives(scores) {
 }
 function genId() { return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
 
-// ── ScoreCircle ───────────────────────────────────────────────
+// 複数評価を施設名でグループ化・平均化
+function groupByFacility(saunas) {
+  const map = {};
+  saunas.forEach(s => {
+    const key = s.name.trim();
+    if (!map[key]) {
+      map[key] = { ...s, _entries: [s] };
+    } else {
+      map[key]._entries.push(s);
+      // スコアを累計
+      CATEGORIES.forEach(c => {
+        map[key].scores[c.key] = (map[key].scores[c.key] || 0) + (s.scores[c.key] || 0);
+      });
+    }
+  });
+  // 平均化
+  Object.values(map).forEach(g => {
+    const n = g._entries.length;
+    if (n > 1) {
+      CATEGORIES.forEach(c => { g.scores[c.key] = Math.round((g.scores[c.key] / n) * 10) / 10; });
+      // 住所・タイプはいずれかから取得
+      const withAddr = g._entries.find(e => e.address);
+      if (withAddr) g.address = withAddr.address;
+      const withType = g._entries.find(e => e.facility_type);
+      if (withType) g.facility_type = withType.facility_type;
+    }
+    g._count = n;
+    g._latest = g._entries[g._entries.length - 1].created_at;
+  });
+  return Object.values(map);
+}
+
+// ── コンポーネント ─────────────────────────────────────────────
 function ScoreCircle({ value, size }) {
   size = size || 72;
   const r = size/2-6, circ = 2*Math.PI*r, dash = (value/5)*circ;
@@ -108,7 +138,6 @@ function ScoreCircle({ value, size }) {
   );
 }
 
-// ── StarPicker ────────────────────────────────────────────────
 function StarPicker({ value, onChange }) {
   const [hovered, setHovered] = useState(0);
   return (
@@ -126,7 +155,6 @@ function StarPicker({ value, onChange }) {
   );
 }
 
-// ── Toast ─────────────────────────────────────────────────────
 function Toast({ msg, type }) {
   if (!msg) return null;
   const isErr = type==="error";
@@ -136,62 +164,137 @@ function Toast({ msg, type }) {
     fontSize:14,fontWeight:600,zIndex:9999,boxShadow:"0 4px 20px #00000080",whiteSpace:"nowrap"}}>{msg}</div>;
 }
 
-// ── FacilityTypeBadge ─────────────────────────────────────────
 function FacilityTypeBadge({ typeKey }) {
   const t = FACILITY_TYPES.find(f=>f.key===typeKey);
   if (!t) return null;
+  return <span style={{display:"inline-flex",alignItems:"center",gap:4,background:"#2a2a3a",border:"1px solid #3a3a50",borderRadius:20,padding:"2px 10px",fontSize:11,color:"#9a9ab8",fontWeight:600}}>{t.icon} {t.label}</span>;
+}
+
+// ── 予測検索コンポーネント ─────────────────────────────────────
+function NameInput({ value, onChange, allSaunas, onSelectExisting }) {
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSug, setShowSug] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!value.trim()) { setSuggestions([]); return; }
+    const q = value.trim().toLowerCase();
+    const names = [...new Set(allSaunas.map(s => s.name.trim()))];
+    const filtered = names.filter(n => n.toLowerCase().includes(q) && n.toLowerCase() !== q);
+    setSuggestions(filtered.slice(0, 5));
+  }, [value, allSaunas]);
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setShowSug(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const handleSelect = (name) => {
+    // 既存施設の最新データを取得
+    const existing = allSaunas.filter(s => s.name.trim() === name).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
+    onSelectExisting(name, existing);
+    setShowSug(false);
+  };
+
   return (
-    <span style={{display:"inline-flex",alignItems:"center",gap:4,
-      background:"#2a2a3a",border:"1px solid #3a3a50",
-      borderRadius:20,padding:"2px 10px",fontSize:11,color:"#9a9ab8",fontWeight:600}}>
-      {t.icon} {t.label}
-    </span>
+    <div ref={wrapRef} style={{position:"relative"}}>
+      <input type="text" value={value}
+        onChange={e=>{ onChange(e.target.value); setShowSug(true); }}
+        onFocus={()=>setShowSug(true)}
+        placeholder="例：サウナしきじ"
+        style={{width:"100%",background:"#26262c",border:"1.5px solid #35353e",borderRadius:10,padding:"13px 15px",color:"#E8EDF2",fontSize:18,fontWeight:600,outline:"none",transition:"border-color 0.2s"}}
+        onFocus2={e=>e.target.style.borderColor="#4AB8D4"}
+        onBlur={e=>e.target.style.borderColor="#35353e"}
+      />
+      {showSug && suggestions.length > 0 && (
+        <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#26262c",border:"1px solid #35353e",borderRadius:10,zIndex:100,overflow:"hidden",boxShadow:"0 8px 24px #00000080"}}>
+          <div style={{padding:"8px 14px 4px",color:"#5a5a6a",fontSize:11,fontWeight:600,letterSpacing:"0.06em"}}>登録済み施設</div>
+          {suggestions.map((name,i) => {
+            const entries = allSaunas.filter(s=>s.name.trim()===name);
+            const ft = entries.find(e=>e.facility_type);
+            const t = ft ? FACILITY_TYPES.find(f=>f.key===ft.facility_type) : null;
+            return (
+              <button key={i} onClick={()=>handleSelect(name)}
+                style={{width:"100%",padding:"10px 14px",background:"none",border:"none",borderTop:"1px solid #2e2e36",cursor:"pointer",display:"flex",alignItems:"center",gap:10,textAlign:"left"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#2e2e36"}
+                onMouseLeave={e=>e.currentTarget.style.background="none"}>
+                <span style={{fontSize:18}}>{t?t.icon:"🧖"}</span>
+                <div>
+                  <div style={{color:"#E8EDF2",fontWeight:600,fontSize:14}}>{name}</div>
+                  <div style={{color:"#5a5a6a",fontSize:11,marginTop:1}}>
+                    {t?t.label:""}{entries.length>1?" · "+entries.length+"件の評価":""}
+                  </div>
+                </div>
+                <span style={{marginLeft:"auto",color:"#4AB8D4",fontSize:12,fontWeight:600}}>これを選ぶ →</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
 // ── RatingPage ────────────────────────────────────────────────
-function RatingPage({ onSave, editTarget, onCancelEdit, saving }) {
+function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
   const empty = Object.fromEntries(CATEGORIES.map(c=>[c.key,0]));
   const [name,         setName]         = useState(editTarget?editTarget.name:"");
   const [facilityType, setFacilityType] = useState(editTarget?(editTarget.facility_type||""):"");
+  const [address,      setAddress]      = useState(editTarget?(editTarget.address||""):"");
   const [scores,       setScores]       = useState(editTarget?editTarget.scores:empty);
   const [note,         setNote]         = useState(editTarget?(editTarget.note||""):"");
   const [author,       setAuthor]       = useState(editTarget?(editTarget.author||""):"");
   const [openHint,     setOpenHint]     = useState(null);
+  const [isExisting,   setIsExisting]   = useState(false);
 
   useEffect(()=>{
     if(editTarget){
       setName(editTarget.name); setFacilityType(editTarget.facility_type||"");
-      setScores(editTarget.scores); setNote(editTarget.note||""); setAuthor(editTarget.author||"");
+      setAddress(editTarget.address||""); setScores(editTarget.scores);
+      setNote(editTarget.note||""); setAuthor(editTarget.author||"");
     } else {
-      setName(""); setFacilityType(""); setScores(empty); setNote(""); setAuthor("");
+      setName(""); setFacilityType(""); setAddress(""); setScores(empty); setNote(""); setAuthor(""); setIsExisting(false);
     }
   },[editTarget?editTarget.id:null]);
 
+  // 既存施設選択時：住所・タイプだけ引き継ぎ、スコアはリセット
+  const handleSelectExisting = (selectedName, existing) => {
+    setName(selectedName);
+    setIsExisting(true);
+    if (existing) {
+      if (existing.facility_type) setFacilityType(existing.facility_type);
+      if (existing.address) setAddress(existing.address);
+    }
+    setScores(empty); // スコアは新規入力
+  };
+
   const overall = avg(scores);
   const allFilled = name.trim() && facilityType && Object.values(scores).every(v=>v>0);
-
   const iStyle = {width:"100%",background:"#26262c",border:"1.5px solid #35353e",borderRadius:10,color:"#E8EDF2",outline:"none",transition:"border-color 0.2s"};
 
   return (
     <div style={{maxWidth:520,margin:"0 auto",padding:"0 0 80px"}}>
-
-      {/* ルーム情報 */}
       <div style={{background:"linear-gradient(135deg,#0e2a1a,#0e1a2a)",border:"1px solid #1a4a2a",borderRadius:12,padding:"12px 16px",marginBottom:20}}>
         <div style={{color:"#5adf9a",fontSize:12,fontWeight:700,marginBottom:2}}>🔗 共有ルーム</div>
         <div style={{color:"#3a6a4a",fontSize:12}}>このファイルを仲間に送れば同じデータを共有できます</div>
       </div>
 
-      {/* サウナ名 */}
+      {/* サウナ名（予測検索付き） */}
       <div style={{marginBottom:14}}>
         <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:7,textTransform:"uppercase"}}>サウナ名</label>
-        <input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="例：サウナしきじ"
-          style={{...iStyle,padding:"13px 15px",fontSize:18,fontWeight:600}}
-          onFocus={e=>e.target.style.borderColor="#4AB8D4"} onBlur={e=>e.target.style.borderColor="#35353e"}/>
+        <NameInput value={name} onChange={v=>{setName(v);setIsExisting(false);}} allSaunas={allSaunas} onSelectExisting={handleSelectExisting}/>
+        {isExisting && (
+          <div style={{marginTop:6,padding:"6px 12px",background:"#4AB8D420",border:"1px solid #4AB8D440",borderRadius:8,color:"#4AB8D4",fontSize:12}}>
+            ✅ 登録済み施設です — あなたの評価を追加します
+          </div>
+        )}
       </div>
 
       {/* 施設タイプ */}
-      <div style={{marginBottom:18}}>
+      <div style={{marginBottom:14}}>
         <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:7,textTransform:"uppercase"}}>施設タイプ</label>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {FACILITY_TYPES.map(t=>{
@@ -205,7 +308,16 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving }) {
             </button>;
           })}
         </div>
-        {!facilityType && <div style={{color:"#5a5a6a",fontSize:11,marginTop:6}}>※ 施設タイプを選択してください</div>}
+      </div>
+
+      {/* 住所 */}
+      <div style={{marginBottom:18}}>
+        <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:7,textTransform:"uppercase"}}>住所・場所（任意）</label>
+        <input type="text" value={address} onChange={e=>setAddress(e.target.value)}
+          placeholder="例：静岡県静岡市駿河区登呂3-14-8"
+          style={{...iStyle,padding:"11px 15px",fontSize:14}}
+          onFocus={e=>e.target.style.borderColor="#4AB8D4"} onBlur={e=>e.target.style.borderColor="#35353e"}/>
+        <div style={{color:"#5a5a6a",fontSize:11,marginTop:5}}>※ 入力するとランキングカードに「Google マップで開く」ボタンが表示されます</div>
       </div>
 
       {/* 投稿者名 */}
@@ -256,10 +368,9 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving }) {
           onFocus={e=>e.target.style.borderColor="#4AB8D4"} onBlur={e=>e.target.style.borderColor="#35353e"}/>
       </div>
 
-      {/* ボタン */}
       <div style={{display:"flex",gap:10,marginTop:18}}>
         {editTarget&&<button onClick={onCancelEdit} style={{flex:1,padding:"14px",background:"#26262c",border:"1px solid #35353e",borderRadius:12,color:"#8888a0",fontSize:15,fontWeight:600,cursor:"pointer"}}>キャンセル</button>}
-        <button onClick={()=>allFilled&&!saving&&onSave({name:name.trim(),facility_type:facilityType,scores,note,author:author.trim(),id:editTarget?editTarget.id:null})}
+        <button onClick={()=>allFilled&&!saving&&onSave({name:name.trim(),facility_type:facilityType,address,scores,note,author:author.trim(),id:editTarget?editTarget.id:null})}
           disabled={!allFilled||saving}
           style={{flex:2,padding:"14px",background:!allFilled||saving?"#2a2a2e":"linear-gradient(135deg,#4AB8D4,#2e8fa8)",border:"none",borderRadius:12,color:!allFilled||saving?"#5a5a6a":"#fff",fontSize:16,fontWeight:700,cursor:!allFilled||saving?"not-allowed":"pointer",transition:"all 0.3s",boxShadow:allFilled&&!saving?"0 4px 20px #4AB8D430":"none"}}>
           {saving?"💾 保存中…":editTarget?"更新する":"このサウナを保存"}
@@ -271,37 +382,34 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving }) {
 
 // ── RankingPage ───────────────────────────────────────────────
 function RankingPage({ saunas, onEdit, onDelete, deleting }) {
-  const [selectedKeys,     setSelectedKeys]     = useState([]);
-  const [facilityFilter,   setFacilityFilter]   = useState("all");
-  const [confirmDelete,    setConfirmDelete]     = useState(null);
+  const [selectedKeys,   setSelectedKeys]   = useState([]);
+  const [facilityFilter, setFacilityFilter] = useState("all");
+  const [confirmDelete,  setConfirmDelete]  = useState(null);
+  const [expandedId,     setExpandedId]     = useState(null);
   const isAllMode = selectedKeys.length===0;
 
   const toggleKey = k => setSelectedKeys(p=>p.includes(k)?p.filter(x=>x!==k):[...p,k]);
 
-  // 施設タイプ絞り込み
-  const filtered = facilityFilter==="all" ? saunas : saunas.filter(s=>s.facility_type===facilityFilter);
+  // グループ化（複数評価を平均）
+  const grouped = groupByFacility(saunas);
+  const filtered = facilityFilter==="all" ? grouped : grouped.filter(s=>s.facility_type===facilityFilter);
 
-  // ソート
   const sorted = [...filtered].sort((a,b)=>{
-    const va = customAvg(a.scores, isAllMode?null:selectedKeys);
-    const vb = customAvg(b.scores, isAllMode?null:selectedKeys);
-    if (vb !== va) return vb - va;
-    // 同点時の処理
-    if (isAllMode) {
-      // 総合: 5の数が多い順
-      return countFives(b.scores) - countFives(a.scores);
-    } else {
-      // 絞り込み: 総合評価が高い順
-      return avg(b.scores) - avg(a.scores);
-    }
+    const va = customAvg(a.scores,isAllMode?null:selectedKeys);
+    const vb = customAvg(b.scores,isAllMode?null:selectedKeys);
+    if (vb!==va) return vb-va;
+    return isAllMode ? countFives(b.scores)-countFives(a.scores) : avg(b.scores)-avg(a.scores);
   });
 
   const medals = ["#FFD700","#C0C0C0","#CD7F32"];
 
+  const openMap = (address, name) => {
+    const q = encodeURIComponent((address||name).trim());
+    window.open("https://www.google.com/maps/search/?api=1&query=" + q, "_blank");
+  };
+
   return (
     <div style={{maxWidth:520,margin:"0 auto",padding:"0 0 80px"}}>
-
-      {/* ルーム情報 */}
       <div style={{background:"linear-gradient(135deg,#0e2a1a,#0e1a2a)",border:"1px solid #1a4a2a",borderRadius:12,padding:"12px 16px",marginBottom:20}}>
         <div style={{color:"#5adf9a",fontSize:12,fontWeight:700,marginBottom:2}}>🔗 共有ルーム</div>
         <div style={{color:"#3a6a4a",fontSize:12}}>このファイルを仲間に送れば同じデータを共有できます</div>
@@ -315,11 +423,9 @@ function RankingPage({ saunas, onEdit, onDelete, deleting }) {
             style={{padding:"6px 14px",borderRadius:20,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.15s",
               border:facilityFilter==="all"?"1.5px solid #4AB8D4":"1.5px solid #35353e",
               background:facilityFilter==="all"?"#4AB8D420":"#26262c",
-              color:facilityFilter==="all"?"#4AB8D4":"#5a5a6a"}}>
-            すべて
-          </button>
+              color:facilityFilter==="all"?"#4AB8D4":"#5a5a6a"}}>すべて</button>
           {FACILITY_TYPES.map(t=>{
-            const active = facilityFilter===t.key;
+            const active=facilityFilter===t.key;
             return <button key={t.key} onClick={()=>setFacilityFilter(active?"all":t.key)}
               style={{padding:"6px 14px",borderRadius:20,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.15s",
                 border:active?"1.5px solid #a07adc":"1.5px solid #35353e",
@@ -341,7 +447,7 @@ function RankingPage({ saunas, onEdit, onDelete, deleting }) {
           <button onClick={()=>setSelectedKeys([])} style={{padding:"7px 14px",borderRadius:20,fontSize:13,fontWeight:600,
             border:isAllMode?"1.5px solid #4AB8D4":"1.5px solid #35353e",
             background:isAllMode?"#4AB8D420":"#26262c",
-            color:isAllMode?"#4AB8D4":"#5a5a6a",cursor:"pointer",transition:"all 0.15s"}}>🏆 総合（全項目）</button>
+            color:isAllMode?"#4AB8D4":"#5a5a6a",cursor:"pointer"}}>🏆 総合（全項目）</button>
         </div>
         <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
           {CATEGORIES.map(cat=>{
@@ -359,55 +465,95 @@ function RankingPage({ saunas, onEdit, onDelete, deleting }) {
         {!isAllMode&&<div style={{marginTop:10,padding:"9px 14px",background:"#C8956A15",borderRadius:10,border:"1px solid #C8956A30",fontSize:13,color:"#C8956A"}}>
           <strong>{selectedKeys.map(k=>{const c=CATEGORIES.find(x=>x.key===k);return c?c.label:"";}).join(" + ")}</strong> の平均でランキング中
         </div>}
-
-        {/* ランキング注釈 */}
-        <div style={{marginTop:10,padding:"8px 12px",background:"#22222a",borderRadius:8,border:"1px solid #2e2e3a"}}>
-          {isAllMode
-            ? <div style={{color:"#5a5a6a",fontSize:11,lineHeight:1.6}}>※ 同点の場合は「5」の評価項目の数が多い順に表示</div>
-            : <div style={{color:"#5a5a6a",fontSize:11,lineHeight:1.6}}>※ 同点の場合は総合評価の数値が高い順に表示</div>}
+        <div style={{marginTop:8,padding:"7px 12px",background:"#22222a",borderRadius:8,border:"1px solid #2e2e3a"}}>
+          <div style={{color:"#5a5a6a",fontSize:11,lineHeight:1.6}}>
+            {isAllMode?"※ 同点の場合は「5」の評価数が多い順　※ 複数評価がある施設は平均値を表示":"※ 同点の場合は総合評価の数値が高い順　※ 複数評価がある施設は平均値を表示"}
+          </div>
         </div>
       </div>
 
-      {filtered.length===0
+      {sorted.length===0
         ? <div style={{textAlign:"center",padding:"60px 20px",color:"#5a5a6a",fontSize:15}}>
             <div style={{fontSize:48,marginBottom:16}}>🔥</div>
             {facilityFilter==="all"?"まだサウナが登録されていません":"この施設タイプの登録がありません"}<br/>
-            <span style={{fontSize:13,color:"#45454e"}}>{facilityFilter==="all"?"評価タブからサウナを追加しましょう":""}</span>
           </div>
         : <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {sorted.map((sauna,i)=>{
               const score = customAvg(sauna.scores,isAllMode?null:selectedKeys);
               const isTop = i<3;
+              const isExpanded = expandedId===sauna.id;
+              const hasAddr = sauna.address && sauna.address.trim();
               return (
-                <div key={sauna.id} style={{background:isTop?"linear-gradient(135deg,#26262c,#2a2820)":"#26262c",borderRadius:14,border:isTop?"1px solid "+medals[i]+"40":"1px solid #2e2e36",padding:"14px 15px",display:"flex",alignItems:"center",gap:11}}>
-                  <div style={{width:34,height:34,borderRadius:"50%",flexShrink:0,background:isTop?medals[i]+"20":"#1C1C1E",border:"2px solid "+(isTop?medals[i]:"#35353e"),display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:isTop?medals[i]:"#5a5a6a"}}>{i+1}</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
-                      <div style={{color:"#E8EDF2",fontWeight:700,fontSize:15,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sauna.name}</div>
-                      <FacilityTypeBadge typeKey={sauna.facility_type}/>
+                <div key={sauna.id} style={{background:isTop?"linear-gradient(135deg,#26262c,#2a2820)":"#26262c",borderRadius:14,border:isTop?"1px solid "+medals[i]+"40":"1px solid #2e2e36",overflow:"hidden"}}>
+                  {/* メインカード */}
+                  <div style={{padding:"14px 15px",display:"flex",alignItems:"center",gap:11}}>
+                    <div style={{width:34,height:34,borderRadius:"50%",flexShrink:0,background:isTop?medals[i]+"20":"#1C1C1E",border:"2px solid "+(isTop?medals[i]:"#35353e"),display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:isTop?medals[i]:"#5a5a6a"}}>{i+1}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2,flexWrap:"wrap"}}>
+                        <div style={{color:"#E8EDF2",fontWeight:700,fontSize:15,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sauna.name}</div>
+                        <FacilityTypeBadge typeKey={sauna.facility_type}/>
+                        {sauna._count>1&&<span style={{background:"#C8956A20",border:"1px solid #C8956A40",borderRadius:20,padding:"1px 8px",fontSize:10,color:"#C8956A",fontWeight:700}}>{sauna._count}件の平均</span>}
+                      </div>
+                      <div style={{display:"flex",gap:5,marginTop:3,flexWrap:"wrap"}}>
+                        {CATEGORIES.map(cat=>{
+                          const isSel=selectedKeys.includes(cat.key);
+                          return <span key={cat.key} style={{fontSize:11,color:!isAllMode&&isSel?"#C8956A":"#5a5a6a",fontWeight:!isAllMode&&isSel?700:400}}>{cat.icon}{typeof sauna.scores[cat.key]==="number"?sauna.scores[cat.key].toFixed(sauna._count>1?1:0):"—"}</span>;
+                        })}
+                      </div>
+                      {hasAddr&&<div style={{color:"#5a5a6a",fontSize:11,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍 {sauna.address}</div>}
                     </div>
-                    <div style={{display:"flex",gap:6,marginTop:2,flexWrap:"wrap"}}>
-                      {CATEGORIES.map(cat=>{
-                        const isSel=selectedKeys.includes(cat.key);
-                        return <span key={cat.key} style={{fontSize:11,color:!isAllMode&&isSel?"#C8956A":"#5a5a6a",fontWeight:!isAllMode&&isSel?700:400}}>{cat.icon}{sauna.scores[cat.key]||"—"}</span>;
-                      })}
+                    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                      <ScoreCircle value={score} size={52}/>
+                      {!isAllMode&&<div style={{fontSize:10,color:"#8888a0",textAlign:"center"}}>総合{avg(sauna.scores).toFixed(1)}</div>}
                     </div>
-                    {sauna.note&&<div style={{color:"#5a5a6a",fontSize:12,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sauna.note}</div>}
-                    <div style={{color:"#45454e",fontSize:11,marginTop:3}}>
-                      {sauna.author&&<span style={{color:"#6a7a8a",marginRight:6}}>👤{sauna.author}</span>}
-                      {new Date(sauna.created_at).toLocaleDateString("ja-JP")}
+                    <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                      <button onClick={()=>setExpandedId(isExpanded?null:sauna.id)}
+                        style={{background:"#1C1C1E",border:"1px solid #35353e",borderRadius:7,padding:"5px 9px",color:"#8888a0",fontSize:12,cursor:"pointer"}}>
+                        {isExpanded?"▲":"▼"}
+                      </button>
+                      <button onClick={()=>onEdit(sauna._entries[sauna._entries.length-1])} style={{background:"#1C1C1E",border:"1px solid #35353e",borderRadius:7,padding:"5px 9px",color:"#8888a0",fontSize:12,cursor:"pointer"}}>✏️</button>
                     </div>
                   </div>
-                  <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
-                    <ScoreCircle value={score} size={52}/>
-                    {!isAllMode&&<div style={{fontSize:10,color:"#8888a0",textAlign:"center"}}>総合{avg(sauna.scores).toFixed(1)}</div>}
-                  </div>
-                  <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                    <button onClick={()=>onEdit(sauna)} style={{background:"#1C1C1E",border:"1px solid #35353e",borderRadius:7,padding:"5px 9px",color:"#8888a0",fontSize:12,cursor:"pointer"}}>✏️</button>
-                    {confirmDelete===sauna.id
-                      ?<button onClick={()=>{onDelete(sauna.id);setConfirmDelete(null);}} disabled={deleting} style={{background:"#3a1a1a",border:"1px solid #5a2020",borderRadius:7,padding:"5px 9px",color:"#e05858",fontSize:12,cursor:"pointer"}}>確認</button>
-                      :<button onClick={()=>setConfirmDelete(sauna.id)} style={{background:"#1C1C1E",border:"1px solid #35353e",borderRadius:7,padding:"5px 9px",color:"#5a5a6a",fontSize:12,cursor:"pointer"}}>🗑️</button>}
-                  </div>
+
+                  {/* 展開パネル */}
+                  {isExpanded&&(
+                    <div style={{borderTop:"1px solid #2e2e36",background:"#1e1e24"}}>
+                      {/* Googleマップボタン */}
+                      {hasAddr&&(
+                        <div style={{padding:"10px 15px 0"}}>
+                          <button onClick={()=>openMap(sauna.address,sauna.name)}
+                            style={{width:"100%",padding:"10px",background:"#1a2a3a",border:"1px solid #2a4a6a",borderRadius:9,color:"#4ab8d4",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                            📍 Google マップで開く
+                          </button>
+                        </div>
+                      )}
+                      {/* 個別評価一覧 */}
+                      {sauna._count>1&&(
+                        <div style={{padding:"10px 15px"}}>
+                          <div style={{color:"#5a5a6a",fontSize:11,fontWeight:600,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.06em"}}>個別評価</div>
+                          {sauna._entries.map((e,ei)=>(
+                            <div key={e.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderTop:ei?"1px solid #2a2a30":"none"}}>
+                              <span style={{color:"#6a7a8a",fontSize:12}}>👤{e.author||"匿名"}</span>
+                              <span style={{color:"#5a5a6a",fontSize:11}}>総合{avg(e.scores).toFixed(1)}</span>
+                              <div style={{display:"flex",gap:4,marginLeft:"auto"}}>
+                                {confirmDelete===e.id
+                                  ?<button onClick={()=>{onDelete(e.id);setConfirmDelete(null);}} disabled={deleting} style={{background:"#3a1a1a",border:"1px solid #5a2020",borderRadius:6,padding:"3px 8px",color:"#e05858",fontSize:11,cursor:"pointer"}}>削除確認</button>
+                                  :<button onClick={()=>setConfirmDelete(e.id)} style={{background:"#1C1C1E",border:"1px solid #35353e",borderRadius:6,padding:"3px 8px",color:"#5a5a6a",fontSize:11,cursor:"pointer"}}>🗑️</button>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {sauna._count===1&&(
+                        <div style={{padding:"10px 15px",display:"flex",justifyContent:"flex-end",gap:6}}>
+                          {sauna._entries[0].note&&<div style={{flex:1,color:"#5a5a6a",fontSize:12,alignSelf:"center"}}>{sauna._entries[0].note}</div>}
+                          {confirmDelete===sauna._entries[0].id
+                            ?<button onClick={()=>{onDelete(sauna._entries[0].id);setConfirmDelete(null);}} disabled={deleting} style={{background:"#3a1a1a",border:"1px solid #5a2020",borderRadius:7,padding:"5px 10px",color:"#e05858",fontSize:12,cursor:"pointer"}}>削除確認</button>
+                            :<button onClick={()=>setConfirmDelete(sauna._entries[0].id)} style={{background:"#1C1C1E",border:"1px solid #35353e",borderRadius:7,padding:"5px 10px",color:"#5a5a6a",fontSize:12,cursor:"pointer"}}>🗑️ 削除</button>}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -443,11 +589,11 @@ function App() {
     setSaving(true);
     try {
       if(data.id){
-        await dbUpdate(data.id,{name:data.name,facility_type:data.facility_type,scores:data.scores,note:data.note,author:data.author,updated_at:new Date().toISOString()});
+        await dbUpdate(data.id,{name:data.name,facility_type:data.facility_type,address:data.address,scores:data.scores,note:data.note,author:data.author,updated_at:new Date().toISOString()});
         setSaunas(p=>p.map(s=>s.id===data.id?{...s,...data}:s));
         showToast("✅ 更新しました！"); setEditTarget(null); setPage("ranking");
       } else {
-        const row={id:genId(),room_id:ROOM_ID,name:data.name,facility_type:data.facility_type,scores:data.scores,note:data.note,author:data.author,created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+        const row={id:genId(),room_id:ROOM_ID,name:data.name,facility_type:data.facility_type,address:data.address||"",scores:data.scores,note:data.note,author:data.author,created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
         const ins=await dbInsert(row); setSaunas(p=>[...p,ins[0]||row]); showToast("✅ 保存しました！");
       }
     } catch(e) { console.error(e); showToast("保存失敗: "+e.message,"error"); }
@@ -461,12 +607,7 @@ function App() {
     finally { setDeleting(false); }
   };
 
-  if(loading) return (
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
-      <div style={{fontSize:48}}>🧖</div>
-      <div style={{color:"#5a5a6a",fontSize:15}}>読み込み中...</div>
-    </div>
-  );
+  if(loading) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}><div style={{fontSize:48}}>🧖</div><div style={{color:"#5a5a6a",fontSize:15}}>読み込み中...</div></div>;
 
   if(loadError) return (
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"0 16px"}}>
@@ -488,13 +629,13 @@ function App() {
             <div>
               <h1 style={{margin:0,fontSize:20,fontWeight:800,letterSpacing:"-0.02em"}}>サ絶日記</h1>
               <div style={{color:"#5a5a6a",fontSize:11}}>
-                {saunas.length>0?saunas.length+"施設を記録中":"サウナを評価・記録しよう"}
+                {saunas.length>0?saunas.length+"件の評価を記録中":"サウナを評価・記録しよう"}
                 {saving&&<span style={{color:"#4AB8D4",marginLeft:8}}>💾 保存中…</span>}
               </div>
             </div>
           </div>
           <div style={{display:"flex"}}>
-            {[{key:"rate",label:editTarget?"✏️ 編集中":"⭐ 評価する"},{key:"ranking",label:"🏆 ランキング"+(saunas.length>0?" ("+saunas.length+")":"")}].map(tab=>(
+            {[{key:"rate",label:editTarget?"✏️ 編集中":"⭐ 評価する"},{key:"ranking",label:"🏆 ランキング"+(saunas.length>0?" ("+groupByFacility(saunas).length+"施設)":"")}].map(tab=>(
               <button key={tab.key} onClick={()=>{setPage(tab.key);if(tab.key==="rate"&&page==="rate")setEditTarget(null);}}
                 style={{flex:1,padding:"11px 0",fontSize:14,fontWeight:700,background:"none",border:"none",cursor:"pointer",color:page===tab.key?"#4AB8D4":"#5a5a6a",borderBottom:page===tab.key?"2px solid #4AB8D4":"2px solid transparent",transition:"all 0.2s"}}>
                 {tab.label}
@@ -505,7 +646,7 @@ function App() {
       </div>
       <div style={{padding:"18px 12px"}}>
         {page==="rate"
-          ?<RatingPage onSave={handleSave} editTarget={editTarget} onCancelEdit={()=>{setEditTarget(null);setPage("ranking");}} saving={saving}/>
+          ?<RatingPage onSave={handleSave} editTarget={editTarget} onCancelEdit={()=>{setEditTarget(null);setPage("ranking");}} saving={saving} allSaunas={saunas}/>
           :<RankingPage saunas={saunas} onEdit={s=>{setEditTarget(s);setPage("rate");}} onDelete={handleDelete} deleting={deleting}/>}
       </div>
       <Toast msg={toast.msg} type={toast.type}/>
