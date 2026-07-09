@@ -192,7 +192,7 @@ async function fetchFacilityInfo(facilityName) {
 const FACILITY_TYPES = [
   { key: "onsen",   label: "温浴施設",                  icon: "♨️" },
   { key: "hotel",   label: "ホテル",                    icon: "🏨" },
-  { key: "private", label: "プライベートサウナ（一棟貸し）", icon: "🏡" },
+  { key: "private", label: "貸切サウナ", icon: "🏡" },
 ];
 const CATEGORIES = [
   { key: "sauna",    label: "サウナの質",   icon: "🔥", hint: "温度（しっかりとした熱さがあるか）、湿度（呼吸しやすい一定の湿度があるか）、テレビや音楽の有無、サ室からの景色" },
@@ -200,7 +200,7 @@ const CATEGORIES = [
   { key: "totonoi",  label: "整いスペース", icon: "🌿", hint: "外気浴か、椅子の種類（フルフラット系があるか）、景色・雰囲気、静かさ、雨対策があるか" },
   { key: "konzatsu", label: "混雑度",       icon: "👥", hint: "施設自体の混雑度、整いスペースの混雑度" },
   { key: "furo",     label: "風呂",         icon: "♨️", hint: "広さ、種類" },
-  { key: "manner",   label: "衛生面",       icon: "🧼", hint: "施設の綺麗さ、利用者の衛生マナー" },
+  { key: "manner",   label: "衛生・マナー",       icon: "🧼", hint: "施設の綺麗さ、利用者のマナー" },
   { key: "price",    label: "値段",         icon: "💴", hint: "ホテルの場合はホテル施設も鑑みての総合評価" },
 ];
 const STAR_LABELS = ["", "最悪", "悪い", "普通", "良い", "最高"];
@@ -827,7 +827,7 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, saving }) {
                               <span style={{color:"#45454e",fontSize:10}}>{new Date(entry.created_at).toLocaleDateString("ja-JP")}</span>
                               <button onClick={()=>setEditingEntry(entry)}
                                 style={{background:"#2a2a3a",border:"1px solid #3a3a50",borderRadius:6,padding:"4px 10px",color:"#9a9ab8",fontSize:12,cursor:"pointer",fontWeight:600}}>
-                                ✏️ 編集
+                                ✏️
                               </button>
                               {confirmDelete===entry.id
                                 ?<button onClick={()=>{onDelete(entry.id);setConfirmDelete(null);}}
