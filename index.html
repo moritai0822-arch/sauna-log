@@ -9,13 +9,98 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #1C1C1E; color: #E8EDF2; font-family: 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif; }
-  input, textarea, button, select { font-family: inherit; }
+  body { background: #1C1C1E; color: #E8EDF2; font-family: 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif; -webkit-text-size-adjust: 100%; }
+  input, textarea, button, select { font-family: inherit; font-size: 16px; /* iOSズーム防止 */ }
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: #1C1C1E; }
   ::-webkit-scrollbar-thumb { background: #35353e; border-radius: 3px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .spin { animation: spin 1s linear infinite; display: inline-block; }
+
+  /* ── レスポンシブ基本 ── */
+  .rp-container { max-width: 520px; margin: 0 auto; padding: 0 0 80px; }
+  .rp-pad { padding: 16px 14px; }
+
+  /* ── 施設タイプボタン ── */
+  .facility-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .facility-btn { padding: 9px 10px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; white-space: nowrap; flex: 1; min-width: 0; text-align: center; }
+  @media (max-width: 380px) { .facility-btn { font-size: 11px; padding: 8px 6px; } }
+
+  /* ── ランキングカード ── */
+  .rank-card-inner { display: flex; align-items: center; gap: 10px; padding: 12px 11px; }
+  .rank-name { color: #E8EDF2; font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-bottom: 3px; min-width: 0; }
+  .cat-scores { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 3px; }
+  .cat-score-item { font-size: 10px; white-space: nowrap; }
+
+  /* ── 星ピッカー ── */
+  .star-btn { background: none; border: none; cursor: pointer; line-height: 1; padding: 3px 1px; transition: all 0.15s; font-size: 26px; }
+
+  /* ── 展開パネル：評価者ヘッダー ── */
+  .entry-header {
+    padding: 9px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #2e2e36;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+  .entry-meta { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; min-width: 0; flex: 1; }
+  .entry-actions { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
+  .entry-author { color: #9a9ab8; font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; }
+  .entry-edit-btn {
+    background: #2a2a3a; border: 1px solid #3a3a50; border-radius: 6px;
+    padding: 5px 9px; color: #9a9ab8; font-size: 11px; cursor: pointer;
+    font-weight: 600; white-space: nowrap; flex-shrink: 0;
+  }
+  .entry-del-btn {
+    background: #2a1a1a; border: 1px solid #3a2020; border-radius: 6px;
+    padding: 5px 8px; color: #7a4a4a; font-size: 11px; cursor: pointer; flex-shrink: 0;
+  }
+  .entry-confirm-btn {
+    background: #3a1a1a; border: 1px solid #5a2020; border-radius: 6px;
+    padding: 5px 9px; color: #e05858; font-size: 11px; cursor: pointer;
+    font-weight: 600; white-space: nowrap; flex-shrink: 0;
+  }
+
+  /* ── 評価項目スコアグリッド（展開パネル内）── */
+  /* スマホ：1列表示、PC：2列表示 */
+  .score-grid { display: grid; grid-template-columns: 1fr; gap: 5px 0; }
+  @media (min-width: 480px) { .score-grid { grid-template-columns: 1fr 1fr; gap: 5px 16px; } }
+  .score-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
+  .score-row-label { color: #6a6a7a; font-size: 11px; white-space: nowrap; flex-shrink: 0; }
+  .score-row-right { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+  .score-row-num { font-size: 11px; font-weight: 700; min-width: 14px; text-align: right; }
+
+  /* ── タブ ── */
+  .tab-btn { flex: 1; padding: 11px 4px; font-size: 13px; font-weight: 700; background: none; border: none; cursor: pointer; transition: all 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  @media (max-width: 360px) { .tab-btn { font-size: 11px; } }
+
+  /* ── フィルターチップ ── */
+  .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .filter-chip { padding: 6px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+
+  /* ── モーダル ── */
+  .modal-wrap { position: fixed; inset: 0; background: #00000090; z-index: 200; display: flex; align-items: flex-start; justify-content: center; padding: 12px; overflow-y: auto; }
+  .modal-box { background: #26262c; border: 1px solid #35353e; border-radius: 16px; padding: 18px 14px; width: 100%; max-width: 480px; margin-top: 12px; margin-bottom: 12px; }
+
+  /* ── 保存ボタン周り ── */
+  .save-btn { flex: 2; padding: 14px; border: none; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.3s; }
+  .cancel-btn { flex: 1; padding: 14px; border-radius: 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+  /* ── 入力欄 ── */
+  .inp { width: 100%; background: #26262c; border: 1.5px solid #35353e; border-radius: 10px; color: #E8EDF2; outline: none; transition: border-color 0.2s; }
+  .inp:focus { border-color: #4AB8D4; }
+  .inp-lg { padding: 12px 13px; font-size: 17px; font-weight: 600; }
+  .inp-md { padding: 10px 13px; font-size: 15px; }
+  @media (max-width: 380px) { .inp-lg { font-size: 15px; } }
+
+  /* ── ラベル共通 ── */
+  .lbl { display: block; color: #8888a0; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; margin-bottom: 6px; text-transform: uppercase; }
+
+  /* ── 自動取得ボタン ── */
+  .fetch-btn { width: 100%; padding: 11px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; transition: all 0.2s; }
 </style>
 </head>
 <body>
@@ -94,8 +179,8 @@ const CATEGORIES = [
   { key: "totonoi",  label: "整いスペース", icon: "🌿", hint: "外気浴か、椅子の種類（フルフラット系があるか）、景色・雰囲気、静かさ、雨対策があるか" },
   { key: "konzatsu", label: "混雑度",       icon: "👥", hint: "施設自体の混雑度、整いスペースの混雑度" },
   { key: "furo",     label: "風呂",         icon: "♨️", hint: "広さ、種類" },
-  { key: "manner",   label: "衛生・マナー",       icon: "🧼", hint: "施設の綺麗さ、利用者のマナー" },
-  { key: "price",    label: "値段",         icon: "💴", hint: "★5=~900円、★4=900~1200円、★3=1200~1500円、★2=1500~2000円、★1=2000円~　ホテルの場合はホテル施設・サービスも鑑みての総合評価" },
+  { key: "manner",   label: "衛生面",       icon: "🧼", hint: "施設の綺麗さ、利用者の衛生マナー" },
+  { key: "price",    label: "値段",         icon: "💴", hint: "ホテルの場合はホテル施設も鑑みての総合評価" },
 ];
 const STAR_LABELS = ["", "最悪", "悪い", "普通", "良い", "最高"];
 
@@ -167,16 +252,17 @@ function ScoreCircle({ value, size }) {
 function StarPicker({ value, onChange }) {
   const [hovered, setHovered] = useState(0);
   return (
-    <div style={{display:"flex",gap:4,alignItems:"center"}}>
+    <div style={{display:"flex",gap:2,alignItems:"center",flexWrap:"nowrap"}}>
       {[1,2,3,4,5].map(n => {
         const filled = n<=(hovered||value);
         return <button key={n} onClick={()=>onChange(n)}
           onMouseEnter={()=>setHovered(n)} onMouseLeave={()=>setHovered(0)}
-          style={{background:"none",border:"none",cursor:"pointer",fontSize:28,lineHeight:1,padding:"2px 1px",
+          className="star-btn"
+          style={{fontSize:26,
             color:filled?"#4AB8D4":"#3a3a40",transform:filled?"scale(1.1)":"scale(1)",
-            transition:"all 0.15s",filter:filled?"drop-shadow(0 0 5px #4AB8D440)":"none"}}>★</button>;
+            filter:filled?"drop-shadow(0 0 5px #4AB8D440)":"none"}}>★</button>;
       })}
-      {(hovered||value)>0&&<span style={{color:"#8888a0",fontSize:12,marginLeft:4}}>{STAR_LABELS[hovered||value]}</span>}
+      {(hovered||value)>0&&<span style={{color:"#8888a0",fontSize:11,marginLeft:3,whiteSpace:"nowrap"}}>{STAR_LABELS[hovered||value]}</span>}
     </div>
   );
 }
@@ -184,9 +270,9 @@ function StarPicker({ value, onChange }) {
 // 小さいスター表示（読み取り専用）
 function StarDisplay({ value }) {
   return (
-    <span style={{display:"inline-flex",gap:1}}>
+    <span style={{display:"inline-flex",gap:1,flexShrink:0}}>
       {[1,2,3,4,5].map(n=>(
-        <span key={n} style={{fontSize:12,color:n<=value?"#4AB8D4":"#3a3a40"}}>★</span>
+        <span key={n} style={{fontSize:11,color:n<=value?"#4AB8D4":"#3a3a40"}}>★</span>
       ))}
     </span>
   );
@@ -204,7 +290,7 @@ function Toast({ msg, type }) {
 function FacilityTypeBadge({ typeKey }) {
   const t = FACILITY_TYPES.find(f=>f.key===typeKey);
   if (!t) return null;
-  return <span style={{display:"inline-flex",alignItems:"center",gap:4,background:"#2a2a3a",border:"1px solid #3a3a50",borderRadius:20,padding:"2px 10px",fontSize:11,color:"#9a9ab8",fontWeight:600}}>{t.icon} {t.label}</span>;
+  return <span style={{display:"inline-flex",alignItems:"center",gap:3,background:"#2a2a3a",border:"1px solid #3a3a50",borderRadius:20,padding:"2px 9px",fontSize:10,color:"#9a9ab8",fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>{t.icon} {t.label}</span>;
 }
 
 // ── 予測検索 ──────────────────────────────────────────────────
@@ -267,8 +353,8 @@ function FacilityInfoModal({ info, facilityName, onConfirm, onCancel }) {
   const [homepage, setHomepage] = useState(info.homepage||"");
 
   return (
-    <div style={{position:"fixed",inset:0,background:"#00000090",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
-      <div style={{background:"#26262c",border:"1px solid #35353e",borderRadius:16,padding:"24px",width:"100%",maxWidth:460}}>
+    <div className="modal-wrap" style={{alignItems:"center"}}>
+      <div className="modal-box">
         <div style={{fontSize:18,fontWeight:800,marginBottom:4}}>📍 施設情報の確認</div>
         <div style={{color:"#5a5a6a",fontSize:13,marginBottom:18}}>「{facilityName}」の情報を自動取得しました。内容を確認・修正して登録してください。</div>
 
@@ -317,8 +403,8 @@ function EditEntryModal({ entry, onSave, onClose, saving }) {
   const overall = avg(scores);
 
   return (
-    <div style={{position:"fixed",inset:0,background:"#00000090",zIndex:200,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"16px",overflowY:"auto"}}>
-      <div style={{background:"#1C1C1E",border:"1px solid #35353e",borderRadius:16,padding:"20px",width:"100%",maxWidth:480,marginTop:20,marginBottom:20}}>
+    <div className="modal-wrap">
+      <div className="modal-box" style={{background:"#1C1C1E"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
           <div>
             <div style={{fontSize:17,fontWeight:800}}>{entry.name}</div>
@@ -438,7 +524,7 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
   const iStyle = {width:"100%",background:"#26262c",border:"1.5px solid #35353e",borderRadius:10,color:"#E8EDF2",outline:"none",transition:"border-color 0.2s"};
 
   return (
-    <div style={{maxWidth:520,margin:"0 auto",padding:"0 0 80px"}}>
+    <div className="rp-container">
       {fetchedInfo && (
         <FacilityInfoModal info={fetchedInfo} facilityName={name}
           onConfirm={handleConfirmInfo} onCancel={()=>setFetchedInfo(null)}/>
@@ -460,7 +546,8 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
       {name.trim() && !editTarget && (
         <div style={{marginBottom:16}}>
           <button onClick={handleAutoFetch} disabled={fetchingInfo}
-            style={{width:"100%",padding:"11px",background:fetchingInfo?"#2a2a2e":"#1a2a3a",border:"1px solid "+(fetchingInfo?"#35353e":"#2a4a6a"),borderRadius:10,color:fetchingInfo?"#5a5a6a":"#4AB8D4",fontSize:14,fontWeight:700,cursor:fetchingInfo?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            className="fetch-btn"
+            style={{background:fetchingInfo?"#2a2a2e":"#1a2a3a",border:"1px solid "+(fetchingInfo?"#35353e":"#2a4a6a"),color:fetchingInfo?"#5a5a6a":"#4AB8D4",cursor:fetchingInfo?"not-allowed":"pointer"}}>
             {fetchingInfo?<><span className="spin">⟳</span> 施設情報を検索中…</>:"🔍 施設情報を自動取得（住所・HP）"}
           </button>
           {fetchError&&<div style={{marginTop:6,color:"#e05858",fontSize:12,padding:"6px 12px",background:"#2a1a1a",borderRadius:8,border:"1px solid #5a2a2a"}}>{fetchError}</div>}
@@ -477,12 +564,12 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
       {/* 施設タイプ */}
       <div style={{marginBottom:14}}>
         <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:7,textTransform:"uppercase"}}>施設タイプ</label>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <div className="facility-btns">
           {FACILITY_TYPES.map(t=>{
             const active=facilityType===t.key;
             return <button key={t.key} onClick={()=>setFacilityType(active?"":t.key)}
-              style={{padding:"10px 16px",borderRadius:10,fontSize:14,fontWeight:600,cursor:"pointer",transition:"all 0.15s",
-                border:active?"1.5px solid #4AB8D4":"1.5px solid #35353e",
+              className="facility-btn"
+              style={{border:active?"1.5px solid #4AB8D4":"1.5px solid #35353e",
                 background:active?"#4AB8D420":"#26262c",color:active?"#4AB8D4":"#8888a0"}}>
               {t.icon} {t.label}
             </button>;
@@ -576,7 +663,7 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, saving }) {
   };
 
   return (
-    <div style={{maxWidth:520,margin:"0 auto",padding:"0 0 80px"}}>
+    <div className="rp-container">
       {editingEntry&&(
         <EditEntryModal entry={editingEntry}
           onSave={async(id,data)=>{ await onUpdateEntry(id,data); setEditingEntry(null); }}
@@ -591,16 +678,16 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, saving }) {
       {/* 施設タイプ絞り込み */}
       <div style={{marginBottom:16}}>
         <div style={{color:"#8888a0",fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>施設タイプで絞り込み</div>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          <button onClick={()=>setFacilityFilter("all")} style={{padding:"6px 14px",borderRadius:20,fontSize:13,fontWeight:600,cursor:"pointer",
-            border:facilityFilter==="all"?"1.5px solid #4AB8D4":"1.5px solid #35353e",
-            background:facilityFilter==="all"?"#4AB8D420":"#26262c",
-            color:facilityFilter==="all"?"#4AB8D4":"#5a5a6a"}}>すべて</button>
+        <div className="filter-chips">
+          <button onClick={()=>setFacilityFilter("all")} className="filter-chip"
+            style={{border:facilityFilter==="all"?"1.5px solid #4AB8D4":"1.5px solid #35353e",
+              background:facilityFilter==="all"?"#4AB8D420":"#26262c",
+              color:facilityFilter==="all"?"#4AB8D4":"#5a5a6a"}}>すべて</button>
           {FACILITY_TYPES.map(t=>{
             const active=facilityFilter===t.key;
             return <button key={t.key} onClick={()=>setFacilityFilter(active?"all":t.key)}
-              style={{padding:"6px 14px",borderRadius:20,fontSize:13,fontWeight:600,cursor:"pointer",
-                border:active?"1.5px solid #a07adc":"1.5px solid #35353e",
+              className="filter-chip"
+              style={{border:active?"1.5px solid #a07adc":"1.5px solid #35353e",
                 background:active?"#a07adc20":"#26262c",color:active?"#a07adc":"#8888a0"}}>
               {t.icon} {t.label}
             </button>;
@@ -619,13 +706,13 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, saving }) {
             border:isAllMode?"1.5px solid #4AB8D4":"1.5px solid #35353e",
             background:isAllMode?"#4AB8D420":"#26262c",color:isAllMode?"#4AB8D4":"#5a5a6a",cursor:"pointer"}}>🏆 総合（全項目）</button>
         </div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+        <div className="filter-chips">
           {CATEGORIES.map(cat=>{
             const active=selectedKeys.includes(cat.key);
             return <button key={cat.key} onClick={()=>toggleKey(cat.key)}
-              style={{padding:"7px 14px",borderRadius:20,fontSize:13,fontWeight:600,position:"relative",
-                border:active?"1.5px solid #C8956A":"1.5px solid #35353e",
-                background:active?"#C8956A20":"#26262c",color:active?"#C8956A":"#8888a0",cursor:"pointer"}}>
+              className="filter-chip"
+              style={{position:"relative",border:active?"1.5px solid #C8956A":"1.5px solid #35353e",
+                background:active?"#C8956A20":"#26262c",color:active?"#C8956A":"#8888a0"}}>
               {cat.icon} {cat.label}
               {active&&<span style={{position:"absolute",top:-5,right:-5,background:"#C8956A",borderRadius:"50%",width:16,height:16,fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",color:"#1C1C1E"}}>✓</span>}
             </button>;
@@ -655,31 +742,31 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, saving }) {
               <div key={sauna.name} style={{background:isTop?"linear-gradient(135deg,#26262c,#2a2820)":"#26262c",borderRadius:14,border:isTop?"1px solid "+medals[i]+"40":"1px solid #2e2e36",overflow:"hidden"}}>
 
                 {/* メインカード */}
-                <div style={{padding:"14px 15px",display:"flex",alignItems:"center",gap:11}}>
-                  <div style={{width:34,height:34,borderRadius:"50%",flexShrink:0,background:isTop?medals[i]+"20":"#1C1C1E",border:"2px solid "+(isTop?medals[i]:"#35353e"),display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:isTop?medals[i]:"#5a5a6a"}}>{i+1}</div>
+                <div className="rank-card-inner">
+                  <div style={{width:30,height:30,borderRadius:"50%",flexShrink:0,background:isTop?medals[i]+"20":"#1C1C1E",border:"2px solid "+(isTop?medals[i]:"#35353e"),display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,color:isTop?medals[i]:"#5a5a6a"}}>{i+1}</div>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
-                      <div style={{color:"#E8EDF2",fontWeight:700,fontSize:15,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sauna.name}</div>
+                    <div className="badge-row">
+                      <div className="rank-name">{sauna.name}</div>
                       <FacilityTypeBadge typeKey={sauna.facility_type}/>
-                      {sauna._count>1&&<span style={{background:"#C8956A20",border:"1px solid #C8956A40",borderRadius:20,padding:"1px 8px",fontSize:10,color:"#C8956A",fontWeight:700}}>{sauna._count}人の平均</span>}
+                      {sauna._count>1&&<span style={{background:"#C8956A20",border:"1px solid #C8956A40",borderRadius:20,padding:"1px 7px",fontSize:10,color:"#C8956A",fontWeight:700,whiteSpace:"nowrap"}}>{sauna._count}人の平均</span>}
                     </div>
-                    <div style={{display:"flex",gap:5,marginTop:2,flexWrap:"wrap"}}>
+                    <div className="cat-scores">
                       {CATEGORIES.map(cat=>{
                         const isSel=selectedKeys.includes(cat.key);
                         const val=sauna.scores[cat.key];
-                        return <span key={cat.key} style={{fontSize:11,color:!isAllMode&&isSel?"#C8956A":"#5a5a6a",fontWeight:!isAllMode&&isSel?700:400}}>
+                        return <span key={cat.key} className="cat-score-item" style={{color:!isAllMode&&isSel?"#C8956A":"#5a5a6a",fontWeight:!isAllMode&&isSel?700:400}}>
                           {cat.icon}{typeof val==="number"?val.toFixed(sauna._count>1?1:0):"—"}
                         </span>;
                       })}
                     </div>
                     {hasAddr&&<div style={{color:"#5a5a6a",fontSize:11,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍 {sauna.address}</div>}
                   </div>
-                  <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
-                    <ScoreCircle value={score} size={52}/>
-                    {!isAllMode&&<div style={{fontSize:10,color:"#8888a0",textAlign:"center"}}>総合{avg(sauna.scores).toFixed(1)}</div>}
+                  <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,flexShrink:0}}>
+                    <ScoreCircle value={score} size={48}/>
+                    {!isAllMode&&<div style={{fontSize:9,color:"#8888a0",textAlign:"center"}}>総合{avg(sauna.scores).toFixed(1)}</div>}
                   </div>
                   <button onClick={()=>setExpandedName(isExpanded?null:sauna.name)}
-                    style={{background:"#1C1C1E",border:"1px solid #35353e",borderRadius:7,padding:"5px 9px",color:"#8888a0",fontSize:12,cursor:"pointer",flexShrink:0}}>
+                    style={{background:"#1C1C1E",border:"1px solid #35353e",borderRadius:7,padding:"6px 8px",color:"#8888a0",fontSize:13,cursor:"pointer",flexShrink:0}}>
                     {isExpanded?"▲":"▼"}
                   </button>
                 </div>
@@ -735,13 +822,13 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, saving }) {
 
                           {/* 各項目スコア */}
                           <div style={{padding:"10px 14px"}}>
-                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px 12px"}}>
+                            <div className="score-grid">
                               {CATEGORIES.map(cat=>(
-                                <div key={cat.key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}}>
-                                  <span style={{color:"#6a6a7a",fontSize:11,whiteSpace:"nowrap"}}>{cat.icon}{cat.label}</span>
-                                  <div style={{display:"flex",alignItems:"center",gap:4}}>
+                                <div key={cat.key} className="score-row">
+                                  <span className="score-row-label">{cat.icon} {cat.label}</span>
+                                  <div className="score-row-right">
                                     <StarDisplay value={entry.scores[cat.key]||0}/>
-                                    <span style={{color:entry.scores[cat.key]>=4?"#4AB8D4":entry.scores[cat.key]>=3?"#C8956A":"#e05858",fontSize:11,fontWeight:700,minWidth:14,textAlign:"right"}}>
+                                    <span className="score-row-num" style={{color:entry.scores[cat.key]>=4?"#4AB8D4":entry.scores[cat.key]>=3?"#C8956A":"#e05858"}}>
                                       {entry.scores[cat.key]||"—"}
                                     </span>
                                   </div>
@@ -761,7 +848,7 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, saving }) {
                             <span style={{background:"#4AB8D430",borderRadius:20,padding:"2px 10px",color:"#4AB8D4",fontSize:12,fontWeight:700}}>総合 {avg(sauna.scores).toFixed(1)}</span>
                           </div>
                           <div style={{padding:"10px 14px"}}>
-                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px 12px"}}>
+                            <div className="score-grid">
                               {CATEGORIES.map(cat=>(
                                 <div key={cat.key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}}>
                                   <span style={{color:"#6a6a7a",fontSize:11,whiteSpace:"nowrap"}}>{cat.icon}{cat.label}</span>
@@ -865,14 +952,15 @@ function App() {
           <div style={{display:"flex"}}>
             {[{key:"rate",label:editTarget?"✏️ 編集中":"⭐ 評価する"},{key:"ranking",label:"🏆 ランキング"+(facilityCount>0?" ("+facilityCount+"施設)":"")}].map(tab=>(
               <button key={tab.key} onClick={()=>{setPage(tab.key);if(tab.key==="rate"&&page==="rate")setEditTarget(null);}}
-                style={{flex:1,padding:"11px 0",fontSize:14,fontWeight:700,background:"none",border:"none",cursor:"pointer",color:page===tab.key?"#4AB8D4":"#5a5a6a",borderBottom:page===tab.key?"2px solid #4AB8D4":"2px solid transparent",transition:"all 0.2s"}}>
+                className="tab-btn"
+                style={{color:page===tab.key?"#4AB8D4":"#5a5a6a",borderBottom:page===tab.key?"2px solid #4AB8D4":"2px solid transparent"}}>
                 {tab.label}
               </button>
             ))}
           </div>
         </div>
       </div>
-      <div style={{padding:"18px 12px"}}>
+      <div className="rp-pad">
         {page==="rate"
           ?<RatingPage onSave={handleSave} editTarget={editTarget} onCancelEdit={()=>{setEditTarget(null);setPage("ranking");}} saving={saving} allSaunas={saunas}/>
           :<RankingPage saunas={saunas} onDelete={handleDelete} onUpdateEntry={handleUpdateEntry} saving={saving}/>}
