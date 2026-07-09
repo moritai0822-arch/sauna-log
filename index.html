@@ -9,7 +9,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #1C1C1E; color: #E8EDF2; font-family: 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif; -webkit-text-size-adjust: 100%; }
+  body { background: #1C1C1E; color: #E8EDF2; font-family: 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif; -webkit-text-size-adjust: 100%; overflow-x: hidden; }
+  html { overflow-x: hidden; }
   input, textarea, button, select { font-family: inherit; font-size: 16px; /* iOSズーム防止 */ }
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: #1C1C1E; }
@@ -18,13 +19,13 @@
   .spin { animation: spin 1s linear infinite; display: inline-block; }
 
   /* ── レスポンシブ基本 ── */
-  .rp-container { max-width: 520px; margin: 0 auto; padding: 0 0 80px; }
-  .rp-pad { padding: 16px 14px; }
+  .rp-container { max-width: 520px; margin: 0 auto; padding: 0 0 80px; width: 100%; }
+  .rp-pad { padding: 16px 14px; width: 100%; }
 
   /* ── 施設タイプボタン ── */
   .facility-btns { display: flex; gap: 6px; flex-wrap: wrap; }
-  .facility-btn { padding: 9px 10px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; white-space: nowrap; flex: 1; min-width: 0; text-align: center; }
-  @media (max-width: 380px) { .facility-btn { font-size: 11px; padding: 8px 6px; } }
+  .facility-btn { padding: 9px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; white-space: nowrap; flex: 1; min-width: 0; text-align: center; overflow: hidden; text-overflow: ellipsis; }
+  @media (max-width: 390px) { .facility-btn { font-size: 11px; padding: 8px 4px; } }
 
   /* ── ランキングカード ── */
   .rank-card-inner { display: flex; align-items: center; gap: 10px; padding: 12px 11px; }
@@ -43,12 +44,32 @@
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid #2e2e36;
-    gap: 6px;
+    gap: 8px;
     flex-wrap: nowrap;
   }
-  .entry-meta { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; min-width: 0; flex: 1; }
+  .entry-meta {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: nowrap;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+  }
   .entry-actions { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
-  .entry-author { color: #9a9ab8; font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; }
+  /* 名前は最大幅を設けず、flex:1で伸びて省略 */
+  .entry-author {
+    color: #9a9ab8; font-size: 12px; font-weight: 700;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex: 1; min-width: 0;
+  }
+  /* 総合スコアと日付は縮まない */
+  .entry-total {
+    background: #1C1C1E; border-radius: 20px; padding: 2px 8px;
+    color: #4AB8D4; font-size: 10px; font-weight: 700;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .entry-date { color: #45454e; font-size: 10px; white-space: nowrap; flex-shrink: 0; }
   .entry-edit-btn {
     background: #2a2a3a; border: 1px solid #3a3a50; border-radius: 6px;
     padding: 5px 9px; color: #9a9ab8; font-size: 11px; cursor: pointer;
@@ -937,7 +958,7 @@ function App() {
 
   return (
     <div style={{minHeight:"100vh"}}>
-      <div style={{background:"linear-gradient(180deg,#1a1a20,#1C1C1E)",borderBottom:"1px solid #26262c",padding:"16px 14px 0",position:"sticky",top:0,zIndex:10}}>
+      <div style={{background:"linear-gradient(180deg,#1a1a20,#1C1C1E)",borderBottom:"1px solid #26262c",padding:"16px 14px 0",position:"sticky",top:0,zIndex:10,overflowX:"hidden",width:"100%"}}>
         <div style={{maxWidth:520,margin:"0 auto"}}>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:13}}>
             <span style={{fontSize:28}}>🧖</span>
