@@ -120,8 +120,6 @@
   /* ── ラベル共通 ── */
   .lbl { display: block; color: #8888a0; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; margin-bottom: 6px; text-transform: uppercase; }
 
-  /* ── 自動取得ボタン ── */
-  .fetch-btn { width: 100%; padding: 11px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; transition: all 0.2s; }
 </style>
 </head>
 <body>
@@ -134,7 +132,7 @@ const SUPABASE_URL = "https://lnqzfphbytpouweilfnh.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxucXpmcGhieXRwb3V3ZWlsZm5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxMTA1MDQsImV4cCI6MjA5ODY4NjUwNH0.JNzYWFOzv3rMEe9YyrQLpZe9cPKX6QJKiPvI9AdgTcQ";
 const API = SUPABASE_URL + "/rest/v1/saunas";
 const ROOM_ID = "sauna-friends-room-1";
-const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
+
 
 const DB_HEADERS = {
   "Content-Type": "application/json",
@@ -201,7 +199,7 @@ const CATEGORIES = [
   { key: "konzatsu", label: "混雑度",       icon: "👥", hint: "施設自体の混雑度、整いスペースの混雑度" },
   { key: "furo",     label: "風呂",         icon: "♨️", hint: "広さ、種類" },
   { key: "manner",   label: "衛生・マナー",       icon: "🧼", hint: "施設の綺麗さ、利用者のマナー" },
-  { key: "price",    label: "値段",         icon: "💴", hint: "★5=0~900円、★4=901円~1200円、★3=1201円~1500円、★2=1501円~2000円、★1=2001円~　ホテル=ホテル施設も鑑みての総合評価" },
+  { key: "price",    label: "値段",         icon: "💴", hint: "★5=0~900円、★4=901円~1200円、★3=1201円~1500円、★2=1501円~2000円、★1=2001円~　※ホテルの場合はホテル施設も鑑みての総合評価" },
 ];
 const STAR_LABELS = ["", "最悪", "悪い", "普通", "良い", "最高"];
 
@@ -368,52 +366,7 @@ function NameInput({ value, onChange, allSaunas, onSelectExisting }) {
   );
 }
 
-// ── 施設情報確認モーダル ──────────────────────────────────────
-function FacilityInfoModal({ info, facilityName, onConfirm, onCancel }) {
-  const [address,  setAddress]  = useState(info.address||"");
-  const [homepage, setHomepage] = useState(info.homepage||"");
 
-  return (
-    <div className="modal-wrap" style={{alignItems:"center"}}>
-      <div className="modal-box">
-        <div style={{fontSize:18,fontWeight:800,marginBottom:4}}>📍 施設情報の確認</div>
-        <div style={{color:"#5a5a6a",fontSize:13,marginBottom:18}}>「{facilityName}」の情報を自動取得しました。内容を確認・修正して登録してください。</div>
-
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",color:"#8888a0",fontSize:11,fontWeight:600,letterSpacing:"0.08em",marginBottom:6,textTransform:"uppercase"}}>住所</label>
-          {info.found
-            ? <input value={address} onChange={e=>setAddress(e.target.value)}
-                style={{width:"100%",background:"#1e1e24",border:"1.5px solid #4AB8D4",borderRadius:8,padding:"10px 12px",color:"#E8EDF2",fontSize:14,outline:"none"}}/>
-            : <div style={{color:"#5a5a6a",fontSize:13,padding:"10px 12px",background:"#1e1e24",borderRadius:8,border:"1px solid #35353e"}}>見つかりませんでした</div>}
-        </div>
-
-        <div style={{marginBottom:20}}>
-          <label style={{display:"block",color:"#8888a0",fontSize:11,fontWeight:600,letterSpacing:"0.08em",marginBottom:6,textTransform:"uppercase"}}>公式ホームページ</label>
-          {info.found
-            ? <input value={homepage} onChange={e=>setHomepage(e.target.value)}
-                placeholder="なし"
-                style={{width:"100%",background:"#1e1e24",border:"1.5px solid #4AB8D4",borderRadius:8,padding:"10px 12px",color:"#E8EDF2",fontSize:14,outline:"none"}}/>
-            : <div style={{color:"#5a5a6a",fontSize:13,padding:"10px 12px",background:"#1e1e24",borderRadius:8,border:"1px solid #35353e"}}>見つかりませんでした</div>}
-        </div>
-
-        {!info.found&&(
-          <div style={{marginBottom:16,padding:"10px 14px",background:"#2a2010",border:"1px solid #5a4a20",borderRadius:8,color:"#C8956A",fontSize:12}}>
-            ⚠️ 施設情報が見つかりませんでした。手動で入力するか、このまま登録できます。
-          </div>
-        )}
-
-        <div style={{display:"flex",gap:10}}>
-          <button onClick={onCancel} style={{flex:1,padding:"12px",background:"#1e1e24",border:"1px solid #35353e",borderRadius:10,color:"#8888a0",fontSize:14,fontWeight:600,cursor:"pointer"}}>
-            キャンセル
-          </button>
-          <button onClick={()=>onConfirm(address,homepage)} style={{flex:2,padding:"12px",background:"linear-gradient(135deg,#4AB8D4,#2e8fa8)",border:"none",borderRadius:10,color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer"}}>
-            ✅ この情報で登録
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ── 評価編集モーダル ──────────────────────────────────────────
 function EditEntryModal({ entry, onSave, onClose, saving }) {
@@ -499,9 +452,6 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
   const [author,        setAuthor]        = useState(editTarget?(editTarget.author||""):"");
   const [openHint,      setOpenHint]      = useState(null);
   const [isExisting,    setIsExisting]    = useState(false);
-  const [fetchingInfo,  setFetchingInfo]  = useState(false);
-  const [fetchedInfo,   setFetchedInfo]   = useState(null);
-  const [fetchError,    setFetchError]    = useState("");
 
   useEffect(()=>{
     if(editTarget){
@@ -523,22 +473,6 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
     setScores(empty);
   };
 
-  const handleAutoFetch = async () => {
-    if (!name.trim()) return;
-    setFetchingInfo(true); setFetchError(""); setFetchedInfo(null);
-    try {
-      const info = await fetchFacilityInfo(name.trim());
-      setFetchedInfo(info);
-    } catch(e) {
-      setFetchError("取得に失敗しました: " + e.message);
-    } finally {
-      setFetchingInfo(false);
-    }
-  };
-
-  const handleConfirmInfo = (addr, hp) => {
-    setAddress(addr); setHomepage(hp); setFetchedInfo(null);
-  };
 
   const overall = avg(scores);
   const allFilled = name.trim() && facilityType && Object.values(scores).every(v=>v>0);
@@ -546,11 +480,6 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
 
   return (
     <div className="rp-container">
-      {fetchedInfo && (
-        <FacilityInfoModal info={fetchedInfo} facilityName={name}
-          onConfirm={handleConfirmInfo} onCancel={()=>setFetchedInfo(null)}/>
-      )}
-
       <div style={{background:"linear-gradient(135deg,#0e2a1a,#0e1a2a)",border:"1px solid #1a4a2a",borderRadius:12,padding:"12px 16px",marginBottom:20}}>
         <div style={{color:"#5adf9a",fontSize:12,fontWeight:700,marginBottom:2}}>🔗 共有ルーム</div>
         <div style={{color:"#3a6a4a",fontSize:12}}>このファイルを仲間に送れば同じデータを共有できます</div>
@@ -563,24 +492,7 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
         {isExisting&&<div style={{marginTop:6,padding:"6px 12px",background:"#4AB8D420",border:"1px solid #4AB8D440",borderRadius:8,color:"#4AB8D4",fontSize:12}}>✅ 登録済み施設 — あなたの評価を追加します</div>}
       </div>
 
-      {/* 施設情報自動取得 */}
-      {name.trim() && !editTarget && (
-        <div style={{marginBottom:16}}>
-          <button onClick={handleAutoFetch} disabled={fetchingInfo}
-            className="fetch-btn"
-            style={{background:fetchingInfo?"#2a2a2e":"#1a2a3a",border:"1px solid "+(fetchingInfo?"#35353e":"#2a4a6a"),color:fetchingInfo?"#5a5a6a":"#4AB8D4",cursor:fetchingInfo?"not-allowed":"pointer"}}>
-            {fetchingInfo?<><span className="spin">⟳</span> 施設情報を検索中…</>:"🔍 施設情報を自動取得（住所・HP）"}
-          </button>
-          {fetchError&&<div style={{marginTop:6,color:"#e05858",fontSize:12,padding:"6px 12px",background:"#2a1a1a",borderRadius:8,border:"1px solid #5a2a2a"}}>{fetchError}</div>}
-          {(address||homepage)&&!fetchedInfo&&(
-            <div style={{marginTop:8,padding:"10px 14px",background:"#1a2a1a",border:"1px solid #2a4a2a",borderRadius:8}}>
-              {address&&<div style={{color:"#5adf9a",fontSize:12,marginBottom:3}}>📍 {address}</div>}
-              {homepage&&<div style={{color:"#4AB8D4",fontSize:12}}>🌐 <a href={homepage} target="_blank" style={{color:"#4AB8D4"}}>{homepage}</a></div>}
-              {!homepage&&address&&<div style={{color:"#5a5a6a",fontSize:11,marginTop:2}}>公式HPなし</div>}
-            </div>
-          )}
-        </div>
-      )}
+
 
       {/* 施設タイプ */}
       <div style={{marginBottom:14}}>
@@ -797,18 +709,16 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, saving }) {
                   <div style={{borderTop:"1px solid #2e2e36",background:"#1a1a20"}}>
 
                     {/* マップ・HP */}
-                    {(hasAddr||hasHP)&&(
-                      <div style={{padding:"12px 15px",display:"flex",gap:8,flexWrap:"wrap"}}>
-                        {hasAddr&&<button onClick={()=>openMap(sauna.address,sauna.name)}
-                          style={{flex:1,minWidth:120,padding:"9px 12px",background:"#1a2a3a",border:"1px solid #2a4a6a",borderRadius:8,color:"#4AB8D4",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                          📍 Google マップで開く
-                        </button>}
-                        {hasHP&&<a href={sauna.homepage} target="_blank"
-                          style={{flex:1,minWidth:120,padding:"9px 12px",background:"#1a2a1a",border:"1px solid #2a5a2a",borderRadius:8,color:"#5adf9a",fontSize:13,fontWeight:700,cursor:"pointer",textDecoration:"none",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                          🌐 公式HP
-                        </a>}
-                      </div>
-                    )}
+                    <div style={{padding:"12px 15px",display:"flex",gap:8,flexWrap:"wrap"}}>
+                      <button onClick={()=>openMap(sauna.address,sauna.name)}
+                        style={{flex:1,minWidth:120,padding:"9px 12px",background:"#1a2a3a",border:"1px solid #2a4a6a",borderRadius:8,color:"#4AB8D4",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                        📍 Google マップで開く
+                      </button>
+                      {hasHP&&<a href={sauna.homepage} target="_blank"
+                        style={{flex:1,minWidth:120,padding:"9px 12px",background:"#1a2a1a",border:"1px solid #2a5a2a",borderRadius:8,color:"#5adf9a",fontSize:13,fontWeight:700,cursor:"pointer",textDecoration:"none",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        🌐 公式HP
+                      </a>}
+                    </div>
 
                     {/* 各評価者の詳細 */}
                     <div style={{padding:"4px 15px 14px"}}>
@@ -995,4 +905,3 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
-
