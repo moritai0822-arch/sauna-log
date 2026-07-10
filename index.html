@@ -163,28 +163,7 @@ async function dbDelete(id) {
 }
 
 // ── Claude API（施設情報検索）────────────────────────────────
-async function fetchFacilityInfo(facilityName) {
-  const body = {
-    model: "claude-sonnet-4-6",
-    max_tokens: 1000,
-    tools: [{ type: "web_search_20250305", name: "web_search" }],
-    messages: [{
-      role: "user",
-      content: `「${facilityName}」というサウナ・温浴施設の情報を調べて、以下のJSON形式のみで返してください。他の文章は一切不要です。\n{"address":"住所（都道府県から番地まで）","homepage":"公式HP URL（なければnull）","found":true}\n見つからない場合：{"address":null,"homepage":null,"found":false}`
-    }]
-  };
-  const res = await fetch(ANTHROPIC_API, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) throw new Error("API Error: " + res.status);
-  const data = await res.json();
-  const text = data.content.filter(b => b.type === "text").map(b => b.text).join("");
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("レスポンスの解析に失敗しました");
-  return JSON.parse(match[0]);
-}
+
 
 // ── 定数 ──────────────────────────────────────────────────────
 const FACILITY_TYPES = [
@@ -459,7 +438,7 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
       setAddress(editTarget.address||""); setHomepage(editTarget.homepage||"");
       setScores(editTarget.scores); setNote(editTarget.note||""); setAuthor(editTarget.author||"");
     } else {
-      setName(""); setFacilityType(""); setAddress(""); setHomepage(""); setScores(empty); setNote(""); setAuthor(""); setIsExisting(false); setFetchedInfo(null); setFetchError("");
+      setName(""); setFacilityType(""); setAddress(""); setHomepage(""); setScores(empty); setNote(""); setAuthor(""); setIsExisting(false);
     }
   },[editTarget?editTarget.id:null]);
 
@@ -488,7 +467,7 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
       {/* サウナ名 */}
       <div style={{marginBottom:10}}>
         <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:7,textTransform:"uppercase"}}>サウナ名</label>
-        <NameInput value={name} onChange={v=>{setName(v);setIsExisting(false);setFetchedInfo(null);setFetchError("");}} allSaunas={allSaunas} onSelectExisting={handleSelectExisting}/>
+        <NameInput value={name} onChange={v=>{setName(v);setIsExisting(false);}} allSaunas={allSaunas} onSelectExisting={handleSelectExisting}/>
         {isExisting&&<div style={{marginTop:6,padding:"6px 12px",background:"#4AB8D420",border:"1px solid #4AB8D440",borderRadius:8,color:"#4AB8D4",fontSize:12}}>✅ 登録済み施設 — あなたの評価を追加します</div>}
       </div>
 
