@@ -517,10 +517,7 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
 
   return (
     <div className="rp-container">
-      <div style={{background:"linear-gradient(135deg,#0e2a1a,#0e1a2a)",border:"1px solid #1a4a2a",borderRadius:12,padding:"12px 16px",marginBottom:20}}>
-        <div style={{color:"#5adf9a",fontSize:12,fontWeight:700,marginBottom:2}}>🔗 共有ルーム</div>
-        <div style={{color:"#3a6a4a",fontSize:12}}>このファイルを仲間に送れば同じデータを共有できます</div>
-      </div>
+
 
       <div style={{marginBottom:10}}>
         <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:7,textTransform:"uppercase"}}>サウナ名</label>
@@ -574,14 +571,7 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
         </div>
       </div>
 
-      <div style={{marginBottom:14}}>
-        <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:7,textTransform:"uppercase"}}>住所・場所（任意）</label>
-        <input value={address} onChange={e=>setAddress(e.target.value)}
-          placeholder="例：静岡県静岡市駿河区登呂3-14-8"
-          style={{...iStyle,padding:"11px 15px",fontSize:14}}
-          onFocus={e=>e.target.style.borderColor="#4AB8D4"} onBlur={e=>e.target.style.borderColor="#35353e"}/>
-        <div style={{color:"#5a5a6a",fontSize:11,marginTop:5}}>※ 入力すると住所でGoogleマップ検索されます。未入力の場合は施設名で検索します</div>
-      </div>
+
 
       <div style={{marginBottom:18}}>
         <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:7,textTransform:"uppercase"}}>投稿者名（任意）</label>
@@ -639,10 +629,10 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
   );
 }
 
-function RankingPage({ saunas, onDelete, onUpdateEntry, saving }) {
+function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving }) {
   const [selectedKeys,   setSelectedKeys]   = useState([]);
   const [facilityFilter, setFacilityFilter] = useState("all");
-  const [prefFilter,     setPrefFilter]     = useState("");
+  const [prefFilter,     setPrefFilter]     = useState([]);
   const [expandedName,   setExpandedName]   = useState(null);
   const [editingEntry,   setEditingEntry]   = useState(null);
   const [confirmDelete,  setConfirmDelete]  = useState(null);
@@ -657,7 +647,7 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, saving }) {
   });
   const filtered = grouped
     .filter(s=>facilityFilter==="all"||s.facility_type===facilityFilter)
-    .filter(s=>!prefFilter||s.prefecture===prefFilter);
+    .filter(s=>prefFilter.length===0||prefFilter.includes(s.prefecture));
   const sorted = [...filtered].sort((a,b)=>{
     const va=customAvg(a.scores,isAllMode?null:selectedKeys);
     const vb=customAvg(b.scores,isAllMode?null:selectedKeys);
@@ -676,22 +666,38 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, saving }) {
       {editingEntry&&(
         <EditEntryModal entry={editingEntry}
           onSave={async(id,data)=>{ await onUpdateEntry(id,data); setEditingEntry(null); }}
+          onSaveFacility={async(id,data)=>{ await onUpdateFacility(id,data); setEditingEntry(null); }}
           onClose={()=>setEditingEntry(null)} saving={saving}/>
       )}
 
-      <div style={{background:"linear-gradient(135deg,#0e2a1a,#0e1a2a)",border:"1px solid #1a4a2a",borderRadius:12,padding:"12px 16px",marginBottom:20}}>
-        <div style={{color:"#5adf9a",fontSize:12,fontWeight:700,marginBottom:2}}>🔗 共有ルーム</div>
-        <div style={{color:"#3a6a4a",fontSize:12}}>このファイルを仲間に送れば同じデータを共有できます</div>
-      </div>
+
 
       {/* 都道府県フィルター */}
       <div style={{marginBottom:16}}>
-        <div style={{color:"#8888a0",fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>都道府県で絞り込み</div>
-        <select value={prefFilter} onChange={e=>setPrefFilter(e.target.value)}
-          style={{width:"100%",background:"#26262c",border:"1px solid #35353e",borderRadius:10,padding:"10px 14px",color:prefFilter?"#E8EDF2":"#5a5a6a",fontSize:14,outline:"none",cursor:"pointer"}}>
-          <option value="">すべての都道府県</option>
-          {availablePrefs.map(p=><option key={p} value={p}>{p}</option>)}
-        </select>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <div style={{color:"#8888a0",fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>都道府県で絞り込み（複数選択可）</div>
+          {prefFilter.length>0&&<button onClick={()=>setPrefFilter([])} style={{background:"none",border:"none",cursor:"pointer",color:"#5a5a6a",fontSize:12,textDecoration:"underline"}}>リセット</button>}
+        </div>
+        {availablePrefs.length===0
+          ? <div style={{color:"#5a5a6a",fontSize:12}}>都道府県情報のある施設がありません</div>
+          : <div className="filter-chips">
+              {availablePrefs.map(p=>{
+                const active=prefFilter.includes(p);
+                return <button key={p} onClick={()=>setPrefFilter(prev=>prev.includes(p)?prev.filter(x=>x!==p):[...prev,p])}
+                  className="filter-chip"
+                  style={{border:active?"1.5px solid #4AB8D4":"1.5px solid #35353e",
+                    background:active?"#4AB8D420":"#26262c",
+                    color:active?"#4AB8D4":"#8888a0",
+                    position:"relative"}}>
+                  {p}
+                  {active&&<span style={{position:"absolute",top:-5,right:-5,background:"#4AB8D4",borderRadius:"50%",width:14,height:14,fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",color:"#1C1C1E"}}>✓</span>}
+                </button>;
+              })}
+            </div>
+        }
+        {prefFilter.length>0&&<div style={{marginTop:8,padding:"6px 12px",background:"#4AB8D415",borderRadius:8,border:"1px solid #4AB8D430",fontSize:12,color:"#4AB8D4"}}>
+          {prefFilter.join("・")} で絞り込み中
+        </div>}
       </div>
 
       <div style={{marginBottom:16}}>
@@ -912,6 +918,21 @@ function App() {
     finally{setSaving(false);}
   };
 
+  const handleUpdateFacility=async(id,data)=>{
+    setSaving(true);
+    try{
+      // 同じ施設名の全エントリに施設情報を反映
+      const targetEntry = saunas.find(s=>s.id===id);
+      const sameName = saunas.filter(s=>s.name.trim()===targetEntry.name.trim());
+      await Promise.all(sameName.map(s=>
+        dbUpdate(s.id,{address:data.address||"",prefecture:data.prefecture||"",homepage:data.homepage||"",updated_at:new Date().toISOString()})
+      ));
+      setSaunas(p=>p.map(s=>s.name.trim()===targetEntry.name.trim()?{...s,...data}:s));
+      showToast("✅ 施設情報を更新しました！");
+    }catch(e){showToast("施設情報更新失敗: "+e.message,"error");}
+    finally{setSaving(false);}
+  };
+
   const handleDelete=async(id)=>{
     try{await dbDelete(id);setSaunas(p=>p.filter(s=>s.id!==id));showToast("削除しました");}
     catch(e){showToast("削除失敗: "+e.message,"error");}
@@ -959,7 +980,7 @@ function App() {
       <div className="rp-pad">
         {page==="rate"
           ?<RatingPage onSave={handleSave} editTarget={editTarget} onCancelEdit={()=>{setEditTarget(null);setPage("ranking");}} saving={saving} allSaunas={saunas}/>
-          :<RankingPage saunas={saunas} onDelete={handleDelete} onUpdateEntry={handleUpdateEntry} saving={saving}/>}
+          :<RankingPage saunas={saunas} onDelete={handleDelete} onUpdateEntry={handleUpdateEntry} onUpdateFacility={handleUpdateFacility} saving={saving}/>}
       </div>
       <Toast msg={toast.msg} type={toast.type}/>
     </div>
