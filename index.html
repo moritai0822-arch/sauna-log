@@ -135,6 +135,51 @@ const DB_HEADERS = {
   "Prefer": "return=representation",
 };
 
+
+// ── Google Places API ────────────────────────────────────────
+const GOOGLE_API_KEY = "AIzaSyDG9w4yLlONBso30Ogdw97ywZ4GeiVSXSY";
+
+async function fetchPlaceInfo(facilityName) {
+  const searchRes = await fetch(
+    "https://places.googleapis.com/v1/places:searchText",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_API_KEY,
+        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.websiteUri",
+      },
+      body: JSON.stringify({
+        textQuery: facilityName + " サウナ 温浴",
+        languageCode: "ja",
+        regionCode: "JP",
+        maxResultCount: 1,
+      }),
+    }
+  );
+  if (!searchRes.ok) throw new Error("Places API error: " + searchRes.status);
+  const searchData = await searchRes.json();
+  const place = searchData.places?.[0];
+  if (!place) return { address: null, prefecture: null, homepage: null, found: false };
+  const address = place.formattedAddress || null;
+  const homepage = place.websiteUri || null;
+  const prefecture = address ? extractPrefecture(address) : null;
+  return { address, prefecture, homepage, found: true };
+}
+
+function extractPrefecture(address) {
+  const prefs = [
+    "北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県",
+    "茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県",
+    "新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県",
+    "静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県",
+    "奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県",
+    "徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県",
+    "熊本県","大分県","宮崎県","鹿児島県","沖縄県"
+  ];
+  return prefs.find(p => address.includes(p)) || null;
+}
+
 async function dbFetch() {
   const res = await fetch(API + "?room_id=eq." + encodeURIComponent(ROOM_ID) + "&order=created_at.asc", { headers: DB_HEADERS });
   if (!res.ok) throw new Error(res.status + ": " + await res.text());
