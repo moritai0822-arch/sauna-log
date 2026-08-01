@@ -208,6 +208,8 @@ function groupByFacility(saunas) {
       if (withHP) g.homepage = withHP.homepage;
       const withType = g._entries.find(e => e.facility_type);
       if (withType) g.facility_type = withType.facility_type;
+      const withPref = g._entries.find(e => e.prefecture);
+      if (withPref) g.prefecture = withPref.prefecture;
     }
     g._count = n;
   });
@@ -333,6 +335,23 @@ function EditEntryModal({ entry, onSave, onClose, saving }) {
   const [note,   setNote]   = useState(entry.note||"");
   const [author, setAuthor] = useState(entry.author||"");
   const [openHint, setOpenHint] = useState(null);
+  const handleFetchPlaceInfo = async () => {
+    if (!name.trim()) return;
+    setFetchingPlace(true); setFetchPlaceError(""); setPlaceConfirm(null);
+    try {
+      const info = await fetchPlaceInfo(name.trim());
+      if (!info.found) {
+        setFetchPlaceError("施設情報が見つかりませんでした。手動で入力してください。");
+      } else {
+        setPlaceConfirm(info);
+      }
+    } catch(e) {
+      setFetchPlaceError("取得失敗: " + e.message);
+    } finally {
+      setFetchingPlace(false);
+    }
+  };
+
   const overall = avg(scores);
 
   return (
@@ -399,17 +418,23 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
   const [scores,       setScores]       = useState(editTarget?editTarget.scores:empty);
   const [note,         setNote]         = useState(editTarget?(editTarget.note||""):"");
   const [author,       setAuthor]       = useState(editTarget?(editTarget.author||""):"");
-  const [openHint,     setOpenHint]     = useState(null);
-  const [isExisting,   setIsExisting]   = useState(false);
+  const [openHint,       setOpenHint]       = useState(null);
+  const [isExisting,     setIsExisting]     = useState(false);
+  const [prefecture,     setPrefecture]     = useState(editTarget?(editTarget.prefecture||""):"");
+  const [fetchingPlace,  setFetchingPlace]  = useState(false);
+  const [placeConfirm,   setPlaceConfirm]   = useState(null);
+  const [fetchPlaceError,setFetchPlaceError]= useState("");
 
   useEffect(()=>{
     if(editTarget){
       setName(editTarget.name); setFacilityType(editTarget.facility_type||"");
       setAddress(editTarget.address||""); setHomepage(editTarget.homepage||"");
+      setPrefecture(editTarget.prefecture||"");
       setScores(editTarget.scores); setNote(editTarget.note||""); setAuthor(editTarget.author||"");
     } else {
       setName(""); setFacilityType(""); setAddress(""); setHomepage("");
-      setScores(empty); setNote(""); setAuthor(""); setIsExisting(false);
+      setPrefecture(""); setScores(empty); setNote(""); setAuthor(""); setIsExisting(false);
+      setPlaceConfirm(null); setFetchPlaceError("");
     }
   },[editTarget?editTarget.id:null]);
 
@@ -419,8 +444,26 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
       if (existing.facility_type) setFacilityType(existing.facility_type);
       if (existing.address)       setAddress(existing.address);
       if (existing.homepage)      setHomepage(existing.homepage);
+      if (existing.prefecture)    setPrefecture(existing.prefecture);
     }
     setScores(empty);
+  };
+
+  const handleFetchPlaceInfo = async () => {
+    if (!name.trim()) return;
+    setFetchingPlace(true); setFetchPlaceError(""); setPlaceConfirm(null);
+    try {
+      const info = await fetchPlaceInfo(name.trim());
+      if (!info.found) {
+        setFetchPlaceError("施設情報が見つかりませんでした。手動で入力してください。");
+      } else {
+        setPlaceConfirm(info);
+      }
+    } catch(e) {
+      setFetchPlaceError("取得失敗: " + e.message);
+    } finally {
+      setFetchingPlace(false);
+    }
   };
 
   const overall = avg(scores);
@@ -439,6 +482,37 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
         <NameInput value={name} onChange={v=>{setName(v);setIsExisting(false);}} allSaunas={allSaunas} onSelectExisting={handleSelectExisting}/>
         {isExisting&&<div style={{marginTop:6,padding:"6px 12px",background:"#4AB8D420",border:"1px solid #4AB8D440",borderRadius:8,color:"#4AB8D4",fontSize:12}}>✅ 登録済み施設 — あなたの評価を追加します</div>}
       </div>
+
+      {/* 施設情報自動取得 */}
+      {name.trim()&&!editTarget&&(
+        <div style={{marginBottom:16}}>
+          <button onClick={handleFetchPlaceInfo} disabled={fetchingPlace}
+            style={{width:"100%",padding:"11px",background:fetchingPlace?"#2a2a2e":"#1a2a3a",border:"1px solid "+(fetchingPlace?"#35353e":"#2a4a6a"),borderRadius:10,color:fetchingPlace?"#5a5a6a":"#4AB8D4",fontSize:13,fontWeight:700,cursor:fetchingPlace?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
+            {fetchingPlace?<><span className="spin">⟳</span> 施設情報を検索中…</>:"🔍 住所・都道府県・HPを自動取得"}
+          </button>
+          {fetchPlaceError&&<div style={{marginTop:6,color:"#e05858",fontSize:12,padding:"6px 12px",background:"#2a1a1a",borderRadius:8,border:"1px solid #5a2a2a"}}>{fetchPlaceError}</div>}
+          {placeConfirm&&(
+            <div style={{marginTop:8,background:"#1a2a3a",border:"1px solid #2a4a6a",borderRadius:10,overflow:"hidden"}}>
+              <div style={{padding:"10px 14px",borderBottom:"1px solid #2a4a6a",color:"#4AB8D4",fontSize:12,fontWeight:700}}>📍 取得した情報 — 内容を確認してください</div>
+              <div style={{padding:"10px 14px",display:"flex",flexDirection:"column",gap:6}}>
+                <div style={{fontSize:13,color:"#E8EDF2"}}><span style={{color:"#5a5a6a",fontSize:11}}>住所：</span>{placeConfirm.address||"取得できませんでした"}</div>
+                <div style={{fontSize:13,color:"#E8EDF2"}}><span style={{color:"#5a5a6a",fontSize:11}}>都道府県：</span>{placeConfirm.prefecture||"取得できませんでした"}</div>
+                <div style={{fontSize:13,color:"#E8EDF2"}}><span style={{color:"#5a5a6a",fontSize:11}}>公式HP：</span>{placeConfirm.homepage?<a href={placeConfirm.homepage} target="_blank" style={{color:"#4AB8D4"}}>{placeConfirm.homepage}</a>:"なし"}</div>
+              </div>
+              <div style={{padding:"8px 14px",display:"flex",gap:8}}>
+                <button onClick={()=>{setAddress(placeConfirm.address||"");setPrefecture(placeConfirm.prefecture||"");setHomepage(placeConfirm.homepage||"");setPlaceConfirm(null);}}
+                  style={{flex:2,padding:"9px",background:"linear-gradient(135deg,#4AB8D4,#2e8fa8)",border:"none",borderRadius:8,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  ✅ この情報で登録
+                </button>
+                <button onClick={()=>setPlaceConfirm(null)}
+                  style={{flex:1,padding:"9px",background:"#26262c",border:"1px solid #35353e",borderRadius:8,color:"#8888a0",fontSize:13,cursor:"pointer"}}>
+                  キャンセル
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{marginBottom:14}}>
         <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:7,textTransform:"uppercase"}}>施設タイプ</label>
@@ -510,7 +584,7 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
 
       <div style={{display:"flex",gap:10,marginTop:18}}>
         {editTarget&&<button onClick={onCancelEdit} style={{flex:1,padding:"14px",background:"#26262c",border:"1px solid #35353e",borderRadius:12,color:"#8888a0",fontSize:15,fontWeight:600,cursor:"pointer"}}>キャンセル</button>}
-        <button onClick={()=>allFilled&&!saving&&onSave({name:name.trim(),facility_type:facilityType,address,homepage,scores,note,author:author.trim(),id:editTarget?editTarget.id:null})}
+        <button onClick={()=>allFilled&&!saving&&onSave({name:name.trim(),facility_type:facilityType,address,prefecture,homepage,scores,note,author:author.trim(),id:editTarget?editTarget.id:null})}
           disabled={!allFilled||saving}
           style={{flex:2,padding:"14px",background:!allFilled||saving?"#2a2a2e":"linear-gradient(135deg,#4AB8D4,#2e8fa8)",border:"none",borderRadius:12,color:!allFilled||saving?"#5a5a6a":"#fff",fontSize:16,fontWeight:700,cursor:!allFilled||saving?"not-allowed":"pointer",transition:"all 0.3s",boxShadow:allFilled&&!saving?"0 4px 20px #4AB8D430":"none"}}>
           {saving?"💾 保存中…":editTarget?"更新する":"このサウナを保存"}
@@ -523,6 +597,7 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
 function RankingPage({ saunas, onDelete, onUpdateEntry, saving }) {
   const [selectedKeys,   setSelectedKeys]   = useState([]);
   const [facilityFilter, setFacilityFilter] = useState("all");
+  const [prefFilter,     setPrefFilter]     = useState("");
   const [expandedName,   setExpandedName]   = useState(null);
   const [editingEntry,   setEditingEntry]   = useState(null);
   const [confirmDelete,  setConfirmDelete]  = useState(null);
@@ -530,7 +605,14 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, saving }) {
   const toggleKey = k=>setSelectedKeys(p=>p.includes(k)?p.filter(x=>x!==k):[...p,k]);
 
   const grouped = groupByFacility(saunas);
-  const filtered = facilityFilter==="all"?grouped:grouped.filter(s=>s.facility_type===facilityFilter);
+  // 都道府県一覧（登録済みのもの）
+  const availablePrefs = [...new Set(grouped.map(s=>s.prefecture).filter(Boolean))].sort((a,b)=>{
+    const order=["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"];
+    return order.indexOf(a)-order.indexOf(b);
+  });
+  const filtered = grouped
+    .filter(s=>facilityFilter==="all"||s.facility_type===facilityFilter)
+    .filter(s=>!prefFilter||s.prefecture===prefFilter);
   const sorted = [...filtered].sort((a,b)=>{
     const va=customAvg(a.scores,isAllMode?null:selectedKeys);
     const vb=customAvg(b.scores,isAllMode?null:selectedKeys);
@@ -555,6 +637,16 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, saving }) {
       <div style={{background:"linear-gradient(135deg,#0e2a1a,#0e1a2a)",border:"1px solid #1a4a2a",borderRadius:12,padding:"12px 16px",marginBottom:20}}>
         <div style={{color:"#5adf9a",fontSize:12,fontWeight:700,marginBottom:2}}>🔗 共有ルーム</div>
         <div style={{color:"#3a6a4a",fontSize:12}}>このファイルを仲間に送れば同じデータを共有できます</div>
+      </div>
+
+      {/* 都道府県フィルター */}
+      <div style={{marginBottom:16}}>
+        <div style={{color:"#8888a0",fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>都道府県で絞り込み</div>
+        <select value={prefFilter} onChange={e=>setPrefFilter(e.target.value)}
+          style={{width:"100%",background:"#26262c",border:"1px solid #35353e",borderRadius:10,padding:"10px 14px",color:prefFilter?"#E8EDF2":"#5a5a6a",fontSize:14,outline:"none",cursor:"pointer"}}>
+          <option value="">すべての都道府県</option>
+          {availablePrefs.map(p=><option key={p} value={p}>{p}</option>)}
+        </select>
       </div>
 
       <div style={{marginBottom:16}}>
@@ -635,7 +727,10 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, saving }) {
                         </span>;
                       })}
                     </div>
-                    {hasAddr&&<div style={{color:"#5a5a6a",fontSize:11,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍 {sauna.address}</div>}
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3,flexWrap:"wrap"}}>
+                      {sauna.prefecture&&<span style={{background:"#1a2a3a",border:"1px solid #2a4a6a",borderRadius:20,padding:"1px 8px",fontSize:10,color:"#4AB8D4",fontWeight:600,whiteSpace:"nowrap"}}>📍 {sauna.prefecture}</span>}
+                      {hasAddr&&<div style={{color:"#5a5a6a",fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{sauna.address}</div>}
+                    </div>
                   </div>
                   <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,flexShrink:0}}>
                     <ScoreCircle value={score} size={48}/>
@@ -751,11 +846,11 @@ function App() {
     setSaving(true);
     try{
       if(data.id){
-        await dbUpdate(data.id,{name:data.name,facility_type:data.facility_type,address:data.address||"",homepage:data.homepage||"",scores:data.scores,note:data.note,author:data.author,updated_at:new Date().toISOString()});
+        await dbUpdate(data.id,{name:data.name,facility_type:data.facility_type,prefecture:data.prefecture||"",address:data.address||"",homepage:data.homepage||"",scores:data.scores,note:data.note,author:data.author,updated_at:new Date().toISOString()});
         setSaunas(p=>p.map(s=>s.id===data.id?{...s,...data}:s));
         showToast("✅ 更新しました！");setEditTarget(null);setPage("ranking");
       } else {
-        const row={id:genId(),room_id:ROOM_ID,name:data.name,facility_type:data.facility_type,address:data.address||"",homepage:data.homepage||"",scores:data.scores,note:data.note,author:data.author,created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+        const row={id:genId(),room_id:ROOM_ID,name:data.name,facility_type:data.facility_type,prefecture:data.prefecture||"",address:data.address||"",homepage:data.homepage||"",scores:data.scores,note:data.note,author:data.author,created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
         const ins=await dbInsert(row);setSaunas(p=>[...p,ins[0]||row]);showToast("✅ 保存しました！");
       }
     }catch(e){console.error(e);showToast("保存失敗: "+e.message,"error");}
