@@ -720,11 +720,16 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
 }
 
 function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving }) {
-  const [selectedKeys,   setSelectedKeys]   = useState([]);
-  const [facilityFilter, setFacilityFilter] = useState("all");
-  const [prefFilter,     setPrefFilter]     = useState([]);
-  const [expandedName,   setExpandedName]   = useState(null);
+  const [selectedKeys,      setSelectedKeys]      = useState([]);
+  const [facilityFilter,    setFacilityFilter]    = useState("all");
+  const [prefFilter,        setPrefFilter]        = useState([]);
+  const [expandedName,      setExpandedName]      = useState(null);
+  const [showPrefFilter,    setShowPrefFilter]    = useState(false);
+  const [showFacilityFilter,setShowFacilityFilter]= useState(false);
   const [editingEntry,   setEditingEntry]   = useState(null);
+  const [searchQuery,    setSearchQuery]    = useState("");
+  const [searchResult,   setSearchResult]   = useState(null); // {name, index} or null
+  const itemRefs = useRef({});
   const [confirmDelete,  setConfirmDelete]  = useState(null);
   const isAllMode = selectedKeys.length===0;
   const toggleKey = k=>setSelectedKeys(p=>p.includes(k)?p.filter(x=>x!==k):[...p,k]);
@@ -746,6 +751,22 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving
   });
   const medals=["#FFD700","#C0C0C0","#CD7F32"];
 
+  const handleSearch = (q) => {
+    setSearchQuery(q);
+    if (!q.trim()) { setSearchResult(null); return; }
+    const idx = sorted.findIndex(s => s.name.includes(q.trim()));
+    if (idx >= 0) {
+      setSearchResult({name: sorted[idx].name, index: idx});
+      // 少し遅延してスクロール（レンダリング待ち）
+      setTimeout(() => {
+        const el = itemRefs.current[sorted[idx].name];
+        if (el) el.scrollIntoView({behavior:"smooth", block:"center"});
+      }, 100);
+    } else {
+      setSearchResult({name: null, index: -1});
+    }
+  };
+
   const openMap=(address,name)=>{
     const q=encodeURIComponent((address&&address.trim()?address:name).trim());
     window.open("https://www.google.com/maps/search/?api=1&query="+q,"_blank");
@@ -762,50 +783,102 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving
 
 
 
-      {/* 都道府県フィルター */}
-      <div style={{marginBottom:16}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-          <div style={{color:"#8888a0",fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>都道府県で絞り込み（複数選択可）</div>
-          {prefFilter.length>0&&<button onClick={()=>setPrefFilter([])} style={{background:"none",border:"none",cursor:"pointer",color:"#5a5a6a",fontSize:12,textDecoration:"underline"}}>リセット</button>}
+      {/* 検索バー */}
+      <div style={{marginBottom:12,position:"relative"}}>
+        <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+          <span style={{position:"absolute",left:12,fontSize:16,pointerEvents:"none"}}>🔍</span>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e=>handleSearch(e.target.value)}
+            placeholder="施設名で検索してジャンプ…"
+            style={{width:"100%",background:"#26262c",border:"1.5px solid "+(searchResult&&searchResult.index===-1?"#e05858":searchResult?"#4AB8D4":"#35353e"),borderRadius:10,padding:"11px 40px 11px 38px",color:"#E8EDF2",fontSize:14,outline:"none",transition:"border-color 0.2s"}}
+          />
+          {searchQuery&&<button onClick={()=>{setSearchQuery("");setSearchResult(null);}}
+            style={{position:"absolute",right:10,background:"none",border:"none",cursor:"pointer",color:"#5a5a6a",fontSize:18,lineHeight:1}}>✕</button>}
         </div>
-        {availablePrefs.length===0
-          ? <div style={{color:"#5a5a6a",fontSize:12}}>都道府県情報のある施設がありません</div>
-          : <div className="filter-chips">
-              {availablePrefs.map(p=>{
-                const active=prefFilter.includes(p);
-                return <button key={p} onClick={()=>setPrefFilter(prev=>prev.includes(p)?prev.filter(x=>x!==p):[...prev,p])}
+        {searchResult&&searchResult.index>=0&&(
+          <div style={{marginTop:6,padding:"6px 12px",background:"#4AB8D415",border:"1px solid #4AB8D430",borderRadius:8,fontSize:12,color:"#4AB8D4",display:"flex",alignItems:"center",gap:6}}>
+            <span>✅</span>「{searchResult.name}」が見つかりました（{searchResult.index+1}位）
+          </div>
+        )}
+        {searchResult&&searchResult.index===-1&&(
+          <div style={{marginTop:6,padding:"6px 12px",background:"#2a1a1a",border:"1px solid #5a2a2a",borderRadius:8,fontSize:12,color:"#e05858"}}>
+            「{searchQuery}」は登録されていません
+          </div>
+        )}
+      </div>
+
+      {/* 都道府県フィルター（折りたたみ式）*/}
+      <div style={{marginBottom:8}}>
+        <button onClick={()=>setShowPrefFilter(v=>!v)}
+          style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#26262c",border:"1px solid "+(prefFilter.length>0?"#4AB8D4":"#35353e"),borderRadius:showPrefFilter?"10px 10px 0 0":"10px",cursor:"pointer",transition:"all 0.2s"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{color:"#8888a0",fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>🗾 都道府県で絞り込み</span>
+            {prefFilter.length>0&&<span style={{background:"#4AB8D4",borderRadius:20,padding:"1px 8px",fontSize:10,color:"#1C1C1E",fontWeight:700}}>{prefFilter.length}件選択中</span>}
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {prefFilter.length>0&&<button onClick={e=>{e.stopPropagation();setPrefFilter([]);}} style={{background:"none",border:"none",cursor:"pointer",color:"#5a5a6a",fontSize:11,textDecoration:"underline"}}>リセット</button>}
+            <span style={{color:"#5a5a6a",fontSize:12,transition:"transform 0.2s",display:"inline-block",transform:showPrefFilter?"rotate(180deg)":"rotate(0deg)"}}>▼</span>
+          </div>
+        </button>
+        {showPrefFilter&&(
+          <div style={{background:"#26262c",border:"1px solid #35353e",borderTop:"none",borderRadius:"0 0 10px 10px",padding:"12px 14px"}}>
+            {availablePrefs.length===0
+              ? <div style={{color:"#5a5a6a",fontSize:12}}>都道府県情報のある施設がありません</div>
+              : <div className="filter-chips">
+                  {availablePrefs.map(p=>{
+                    const active=prefFilter.includes(p);
+                    return <button key={p} onClick={()=>setPrefFilter(prev=>prev.includes(p)?prev.filter(x=>x!==p):[...prev,p])}
+                      className="filter-chip"
+                      style={{border:active?"1.5px solid #4AB8D4":"1.5px solid #35353e",
+                        background:active?"#4AB8D420":"#1C1C1E",
+                        color:active?"#4AB8D4":"#8888a0",
+                        position:"relative"}}>
+                      {p}
+                      {active&&<span style={{position:"absolute",top:-5,right:-5,background:"#4AB8D4",borderRadius:"50%",width:14,height:14,fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",color:"#1C1C1E"}}>✓</span>}
+                    </button>;
+                  })}
+                </div>
+            }
+            {prefFilter.length>0&&<div style={{marginTop:8,padding:"6px 10px",background:"#4AB8D415",borderRadius:7,border:"1px solid #4AB8D430",fontSize:11,color:"#4AB8D4"}}>
+              {prefFilter.join("・")} で絞り込み中
+            </div>}
+          </div>
+        )}
+      </div>
+
+      {/* 施設タイプフィルター（折りたたみ式）*/}
+      <div style={{marginBottom:8}}>
+        <button onClick={()=>setShowFacilityFilter(v=>!v)}
+          style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#26262c",border:"1px solid "+(facilityFilter!=="all"?"#a07adc":"#35353e"),borderRadius:showFacilityFilter?"10px 10px 0 0":"10px",cursor:"pointer",transition:"all 0.2s"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{color:"#8888a0",fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>🏷 施設タイプで絞り込み</span>
+            {facilityFilter!=="all"&&<span style={{background:"#a07adc",borderRadius:20,padding:"1px 8px",fontSize:10,color:"#fff",fontWeight:700}}>{FACILITY_TYPES.find(t=>t.key===facilityFilter)?.label}</span>}
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {facilityFilter!=="all"&&<button onClick={e=>{e.stopPropagation();setFacilityFilter("all");}} style={{background:"none",border:"none",cursor:"pointer",color:"#5a5a6a",fontSize:11,textDecoration:"underline"}}>リセット</button>}
+            <span style={{color:"#5a5a6a",fontSize:12,transition:"transform 0.2s",display:"inline-block",transform:showFacilityFilter?"rotate(180deg)":"rotate(0deg)"}}>▼</span>
+          </div>
+        </button>
+        {showFacilityFilter&&(
+          <div style={{background:"#26262c",border:"1px solid #35353e",borderTop:"none",borderRadius:"0 0 10px 10px",padding:"12px 14px"}}>
+            <div className="filter-chips">
+              <button onClick={()=>setFacilityFilter("all")} className="filter-chip"
+                style={{border:facilityFilter==="all"?"1.5px solid #4AB8D4":"1.5px solid #35353e",
+                  background:facilityFilter==="all"?"#4AB8D420":"#1C1C1E",color:facilityFilter==="all"?"#4AB8D4":"#5a5a6a"}}>すべて</button>
+              {FACILITY_TYPES.map(t=>{
+                const active=facilityFilter===t.key;
+                return <button key={t.key} onClick={()=>setFacilityFilter(active?"all":t.key)}
                   className="filter-chip"
-                  style={{border:active?"1.5px solid #4AB8D4":"1.5px solid #35353e",
-                    background:active?"#4AB8D420":"#26262c",
-                    color:active?"#4AB8D4":"#8888a0",
-                    position:"relative"}}>
-                  {p}
-                  {active&&<span style={{position:"absolute",top:-5,right:-5,background:"#4AB8D4",borderRadius:"50%",width:14,height:14,fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",color:"#1C1C1E"}}>✓</span>}
+                  style={{border:active?"1.5px solid #a07adc":"1.5px solid #35353e",
+                    background:active?"#a07adc20":"#1C1C1E",color:active?"#a07adc":"#8888a0"}}>
+                  {t.icon} {t.label}
                 </button>;
               })}
             </div>
-        }
-        {prefFilter.length>0&&<div style={{marginTop:8,padding:"6px 12px",background:"#4AB8D415",borderRadius:8,border:"1px solid #4AB8D430",fontSize:12,color:"#4AB8D4"}}>
-          {prefFilter.join("・")} で絞り込み中
-        </div>}
-      </div>
-
-      <div style={{marginBottom:16}}>
-        <div style={{color:"#8888a0",fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>施設タイプで絞り込み</div>
-        <div className="filter-chips">
-          <button onClick={()=>setFacilityFilter("all")} className="filter-chip"
-            style={{border:facilityFilter==="all"?"1.5px solid #4AB8D4":"1.5px solid #35353e",
-              background:facilityFilter==="all"?"#4AB8D420":"#26262c",color:facilityFilter==="all"?"#4AB8D4":"#5a5a6a"}}>すべて</button>
-          {FACILITY_TYPES.map(t=>{
-            const active=facilityFilter===t.key;
-            return <button key={t.key} onClick={()=>setFacilityFilter(active?"all":t.key)}
-              className="filter-chip"
-              style={{border:active?"1.5px solid #a07adc":"1.5px solid #35353e",
-                background:active?"#a07adc20":"#26262c",color:active?"#a07adc":"#8888a0"}}>
-              {t.icon} {t.label}
-            </button>;
-          })}
-        </div>
+          </div>
+        )}
       </div>
 
       <div style={{marginBottom:18}}>
@@ -850,7 +923,7 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving
             const hasAddr=sauna.address&&sauna.address.trim();
             const hasHP=sauna.homepage&&sauna.homepage.trim();
             return (
-              <div key={sauna.name} style={{background:isTop?"linear-gradient(135deg,#26262c,#2a2820)":"#26262c",borderRadius:14,border:isTop?"1px solid "+medals[i]+"40":"1px solid #2e2e36",overflow:"hidden"}}>
+              <div key={sauna.name} ref={el=>itemRefs.current[sauna.name]=el} style={{background:isTop?"linear-gradient(135deg,#26262c,#2a2820)":"#26262c",borderRadius:14,border:(searchResult&&searchResult.name===sauna.name)?"2px solid #4AB8D4":isTop?"1px solid "+medals[i]+"40":"1px solid #2e2e36",overflow:"hidden",transition:"border-color 0.3s"}}>
                 <div className="rank-card-inner">
                   <div style={{width:30,height:30,borderRadius:"50%",flexShrink:0,background:isTop?medals[i]+"20":"#1C1C1E",border:"2px solid "+(isTop?medals[i]:"#35353e"),display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,color:isTop?medals[i]:"#5a5a6a"}}>{i+1}</div>
                   <div style={{flex:1,minWidth:0}}>
