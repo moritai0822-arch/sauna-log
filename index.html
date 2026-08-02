@@ -751,20 +751,18 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving
   });
   const medals=["#FFD700","#C0C0C0","#CD7F32"];
 
-  const handleSearch = (q) => {
-    setSearchQuery(q);
-    if (!q.trim()) { setSearchResult(null); return; }
-    const idx = sorted.findIndex(s => s.name.includes(q.trim()));
-    if (idx >= 0) {
-      setSearchResult({name: sorted[idx].name, index: idx});
-      // 少し遅延してスクロール（レンダリング待ち）
-      setTimeout(() => {
-        const el = itemRefs.current[sorted[idx].name];
-        if (el) el.scrollIntoView({behavior:"smooth", block:"center"});
-      }, 100);
-    } else {
-      setSearchResult({name: null, index: -1});
-    }
+  // 入力候補を計算
+  const searchCandidates = searchQuery.trim()
+    ? sorted.filter(s => s.name.includes(searchQuery.trim()))
+    : [];
+
+  const handleSelectCandidate = (sauna, idx) => {
+    setSearchQuery(sauna.name);
+    setSearchResult({name: sauna.name, index: idx});
+    setTimeout(() => {
+      const el = itemRefs.current[sauna.name];
+      if (el) el.scrollIntoView({behavior:"smooth", block:"center"});
+    }, 80);
   };
 
   const openMap=(address,name)=>{
@@ -783,28 +781,68 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving
 
 
 
-      {/* 検索バー */}
-      <div style={{marginBottom:12,position:"relative"}}>
+      {/* 検索バー（予測候補式）*/}
+      <div style={{marginBottom:12,position:"relative",zIndex:50}}>
         <div style={{position:"relative",display:"flex",alignItems:"center"}}>
-          <span style={{position:"absolute",left:12,fontSize:16,pointerEvents:"none"}}>🔍</span>
+          <span style={{position:"absolute",left:12,fontSize:15,pointerEvents:"none"}}>🔍</span>
           <input
             type="text"
             value={searchQuery}
-            onChange={e=>handleSearch(e.target.value)}
-            placeholder="施設名で検索してジャンプ…"
-            style={{width:"100%",background:"#26262c",border:"1.5px solid "+(searchResult&&searchResult.index===-1?"#e05858":searchResult?"#4AB8D4":"#35353e"),borderRadius:10,padding:"11px 40px 11px 38px",color:"#E8EDF2",fontSize:14,outline:"none",transition:"border-color 0.2s"}}
+            onChange={e=>{setSearchQuery(e.target.value);setSearchResult(null);}}
+            placeholder="施設名で検索…"
+            style={{width:"100%",background:"#26262c",border:"1.5px solid "+(searchResult?"#4AB8D4":"#35353e"),borderRadius:searchQuery.trim()&&searchCandidates.length>0?"10px 10px 0 0":"10px",padding:"11px 36px 11px 36px",color:"#E8EDF2",fontSize:14,outline:"none",transition:"border-color 0.2s"}}
           />
           {searchQuery&&<button onClick={()=>{setSearchQuery("");setSearchResult(null);}}
             style={{position:"absolute",right:10,background:"none",border:"none",cursor:"pointer",color:"#5a5a6a",fontSize:18,lineHeight:1}}>✕</button>}
         </div>
-        {searchResult&&searchResult.index>=0&&(
-          <div style={{marginTop:6,padding:"6px 12px",background:"#4AB8D415",border:"1px solid #4AB8D430",borderRadius:8,fontSize:12,color:"#4AB8D4",display:"flex",alignItems:"center",gap:6}}>
-            <span>✅</span>「{searchResult.name}」が見つかりました（{searchResult.index+1}位）
-          </div>
+
+        {/* 候補ドロップダウン */}
+        {searchQuery.trim()&&!searchResult&&(
+          searchCandidates.length>0
+            ? <div style={{background:"#26262c",border:"1.5px solid #4AB8D4",borderTop:"none",borderRadius:"0 0 10px 10px",overflow:"hidden",boxShadow:"0 8px 24px #00000060"}}>
+                {searchCandidates.slice(0,6).map((sauna,i)=>{
+                  const rankIdx = sorted.findIndex(s=>s.name===sauna.name);
+                  const isTop = rankIdx<3;
+                  const mColors=["#FFD700","#C0C0C0","#CD7F32"];
+                  return (
+                    <button key={sauna.name}
+                      onClick={()=>handleSelectCandidate(sauna, rankIdx)}
+                      style={{width:"100%",padding:"10px 14px",background:"none",border:"none",borderTop:"1px solid #35353e",cursor:"pointer",display:"flex",alignItems:"center",gap:10,textAlign:"left"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#2e2e3e"}
+                      onMouseLeave={e=>e.currentTarget.style.background="none"}>
+                      {/* 順位バッジ */}
+                      <div style={{width:26,height:26,borderRadius:"50%",flexShrink:0,background:isTop?mColors[rankIdx]+"20":"#1C1C1E",border:"1.5px solid "+(isTop?mColors[rankIdx]:"#35353e"),display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:11,color:isTop?mColors[rankIdx]:"#5a5a6a"}}>{rankIdx+1}</div>
+                      {/* 施設名 */}
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{color:"#E8EDF2",fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {/* マッチ部分をハイライト */}
+                          {sauna.name.split(searchQuery.trim()).map((part,pi,arr)=>(
+                            <span key={pi}>{part}{pi<arr.length-1&&<span style={{color:"#4AB8D4",fontWeight:800}}>{searchQuery.trim()}</span>}</span>
+                          ))}
+                        </div>
+                        <div style={{color:"#5a5a6a",fontSize:10,marginTop:1}}>
+                          {sauna.facility_type&&FACILITY_TYPES.find(f=>f.key===sauna.facility_type)?.label}
+                          {sauna.prefecture&&<span style={{marginLeft:6}}>📍{sauna.prefecture}</span>}
+                        </div>
+                      </div>
+                      {/* スコア */}
+                      <div style={{color:"#4AB8D4",fontSize:13,fontWeight:700,flexShrink:0}}>{avg(sauna.scores).toFixed(1)}</div>
+                      <div style={{color:"#5a5a6a",fontSize:11,flexShrink:0}}>→</div>
+                    </button>
+                  );
+                })}
+                {searchCandidates.length>6&&<div style={{padding:"7px 14px",color:"#5a5a6a",fontSize:11,textAlign:"center",borderTop:"1px solid #35353e"}}>他 {searchCandidates.length-6} 件…</div>}
+              </div>
+            : <div style={{background:"#26262c",border:"1.5px solid #5a2a2a",borderTop:"none",borderRadius:"0 0 10px 10px",padding:"10px 14px",color:"#e05858",fontSize:12}}>
+                「{searchQuery}」は登録されていません
+              </div>
         )}
-        {searchResult&&searchResult.index===-1&&(
-          <div style={{marginTop:6,padding:"6px 12px",background:"#2a1a1a",border:"1px solid #5a2a2a",borderRadius:8,fontSize:12,color:"#e05858"}}>
-            「{searchQuery}」は登録されていません
+
+        {/* 選択済みバナー */}
+        {searchResult&&(
+          <div style={{marginTop:6,padding:"7px 12px",background:"#4AB8D415",border:"1px solid #4AB8D430",borderRadius:8,fontSize:12,color:"#4AB8D4",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <span>✅ 「{searchResult.name}」{searchResult.index+1}位にジャンプしました</span>
+            <button onClick={()=>{setSearchQuery("");setSearchResult(null);}} style={{background:"none",border:"none",cursor:"pointer",color:"#4AB8D4",fontSize:11,textDecoration:"underline"}}>クリア</button>
           </div>
         )}
       </div>
