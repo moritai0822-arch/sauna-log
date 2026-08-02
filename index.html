@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>🧖 ととログ</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -434,7 +434,7 @@ function EditEntryModal({ entry, onSave, onSaveFacility, onClose, saving }) {
             <div style={{marginBottom:12}}>
               <label style={{display:"block",color:"#8888a0",fontSize:11,fontWeight:600,letterSpacing:"0.08em",marginBottom:6,textTransform:"uppercase"}}>投稿者名</label>
               <input value={author} onChange={e=>setAuthor(e.target.value)}
-                style={{width:"100%",background:"#26262c",border:"1.5px solid #35353e",borderRadius:8,padding:"10px 12px",color:"#E8EDF2",fontSize:14,outline:"none"}}/>
+                style={{width:"100%",background:"#26262c",border:"1.5px solid #35353e",borderRadius:8,padding:"10px 12px",color:"#E8EDF2",fontSize:16,outline:"none"}}/>
             </div>
             <div style={{background:"linear-gradient(135deg,#26262c,#1e2028)",borderRadius:12,padding:"12px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:14,border:"1px solid #2e2e36"}}>
               <ScoreCircle value={overall} size={56}/>
@@ -514,12 +514,12 @@ function EditEntryModal({ entry, onSave, onSaveFacility, onClose, saving }) {
             <div style={{marginBottom:10}}>
               <label style={{display:"block",color:"#8888a0",fontSize:11,fontWeight:600,letterSpacing:"0.08em",marginBottom:5,textTransform:"uppercase"}}>住所</label>
               <input value={address} onChange={e=>setAddress(e.target.value)} placeholder="例：東京都豊島区東池袋2-7-1"
-                style={{width:"100%",background:"#26262c",border:"1.5px solid #35353e",borderRadius:8,padding:"9px 12px",color:"#E8EDF2",fontSize:13,outline:"none"}}/>
+                style={{width:"100%",background:"#26262c",border:"1.5px solid #35353e",borderRadius:8,padding:"9px 12px",color:"#E8EDF2",fontSize:16,outline:"none"}}/>
             </div>
             <div style={{marginBottom:10}}>
               <label style={{display:"block",color:"#8888a0",fontSize:11,fontWeight:600,letterSpacing:"0.08em",marginBottom:5,textTransform:"uppercase"}}>都道府県</label>
               <select value={prefecture} onChange={e=>setPrefecture(e.target.value)}
-                style={{width:"100%",background:"#26262c",border:"1.5px solid #35353e",borderRadius:8,padding:"9px 12px",color:prefecture?"#E8EDF2":"#5a5a6a",fontSize:13,outline:"none",cursor:"pointer"}}>
+                style={{width:"100%",background:"#26262c",border:"1.5px solid #35353e",borderRadius:8,padding:"9px 12px",color:prefecture?"#E8EDF2":"#5a5a6a",fontSize:16,outline:"none",cursor:"pointer"}}>
                 <option value="">選択してください</option>
                 {PREFS.map(p=><option key={p} value={p}>{p}</option>)}
               </select>
@@ -527,7 +527,7 @@ function EditEntryModal({ entry, onSave, onSaveFacility, onClose, saving }) {
             <div style={{marginBottom:14}}>
               <label style={{display:"block",color:"#8888a0",fontSize:11,fontWeight:600,letterSpacing:"0.08em",marginBottom:5,textTransform:"uppercase"}}>公式HP（任意）</label>
               <input value={homepage} onChange={e=>setHomepage(e.target.value)} placeholder="https://..."
-                style={{width:"100%",background:"#26262c",border:"1.5px solid #35353e",borderRadius:8,padding:"9px 12px",color:"#E8EDF2",fontSize:13,outline:"none"}}/>
+                style={{width:"100%",background:"#26262c",border:"1.5px solid #35353e",borderRadius:8,padding:"9px 12px",color:"#E8EDF2",fontSize:16,outline:"none"}}/>
             </div>
             <div style={{display:"flex",gap:10}}>
               <button onClick={onClose} style={{flex:1,padding:"12px",background:"#26262c",border:"1px solid #35353e",borderRadius:10,color:"#8888a0",fontSize:13,fontWeight:600,cursor:"pointer"}}>キャンセル</button>
@@ -790,7 +790,7 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving
             value={searchQuery}
             onChange={e=>{setSearchQuery(e.target.value);setSearchResult(null);}}
             placeholder="施設名で検索…"
-            style={{width:"100%",background:"#26262c",border:"1.5px solid "+(searchResult?"#4AB8D4":"#35353e"),borderRadius:searchQuery.trim()&&searchCandidates.length>0?"10px 10px 0 0":"10px",padding:"11px 36px 11px 36px",color:"#E8EDF2",fontSize:14,outline:"none",transition:"border-color 0.2s"}}
+            style={{width:"100%",background:"#26262c",border:"1.5px solid "+(searchResult?"#4AB8D4":"#35353e"),borderRadius:searchQuery.trim()&&searchCandidates.length>0?"10px 10px 0 0":"10px",padding:"11px 36px 11px 36px",color:"#E8EDF2",fontSize:16,outline:"none",transition:"border-color 0.2s"}}
           />
           {searchQuery&&<button onClick={()=>{setSearchQuery("");setSearchResult(null);}}
             style={{position:"absolute",right:10,background:"none",border:"none",cursor:"pointer",color:"#5a5a6a",fontSize:18,lineHeight:1}}>✕</button>}
