@@ -205,6 +205,46 @@ const FACILITY_TYPES = [
   { key: "hotel",   label: "ホテル",   icon: "🏨" },
   { key: "private", label: "貸切サウナ", icon: "🏡" },
 ];
+const TIME_SLOTS = [
+  { key: "06-09", label: "6〜9時" },
+  { key: "09-12", label: "9〜12時" },
+  { key: "12-15", label: "12〜15時" },
+  { key: "15-18", label: "15〜18時" },
+  { key: "18-21", label: "18〜21時" },
+  { key: "21-24", label: "21〜24時" },
+  { key: "24-06", label: "24〜6時" },
+];
+
+const TIME_SLOTS = [
+  { key: "6-9",   label: "6〜9時" },
+  { key: "9-12",  label: "9〜12時" },
+  { key: "12-15", label: "12〜15時" },
+  { key: "15-18", label: "15〜18時" },
+  { key: "18-21", label: "18〜21時" },
+  { key: "21-24", label: "21〜24時" },
+  { key: "24-6",  label: "24〜6時" },
+];
+
+const VISIT_TIMES = [
+  { key: "06-09", label: "6〜9時" },
+  { key: "09-12", label: "9〜12時" },
+  { key: "12-15", label: "12〜15時" },
+  { key: "15-18", label: "15〜18時" },
+  { key: "18-21", label: "18〜21時" },
+  { key: "21-24", label: "21〜24時" },
+  { key: "24-06", label: "24〜6時" },
+];
+
+const TIME_SLOTS = [
+  { key: "06-09", label: "6〜9時" },
+  { key: "09-12", label: "9〜12時" },
+  { key: "12-15", label: "12〜15時" },
+  { key: "15-18", label: "15〜18時" },
+  { key: "18-21", label: "18〜21時" },
+  { key: "21-24", label: "21〜24時" },
+  { key: "24-06", label: "24〜6時" },
+];
+
 const CATEGORIES = [
   { key: "sauna",    label: "サウナの質",   icon: "🔥", hint: "温度（しっかりとした熱さがあるか）、湿度（呼吸しやすい一定の湿度があるか）、テレビや音楽の有無、サ室からの景色" },
   { key: "mizuburo", label: "水風呂",       icon: "💧", hint: "温度（理想13〜18℃）、深さ、サ室からの距離" },
@@ -380,6 +420,7 @@ function EditEntryModal({ entry, onSave, onSaveFacility, onClose, saving }) {
   const [scores,         setScores]         = useState({...entry.scores});
   const [note,           setNote]           = useState(entry.note||"");
   const [author,         setAuthor]         = useState(entry.author||"");
+  const [visitTime,      setVisitTime]      = useState(entry.visit_time||"");
   const [openHint,       setOpenHint]       = useState(null);
   const [address,        setAddress]        = useState(entry.address||"");
   const [prefecture,     setPrefecture]     = useState(entry.prefecture||"");
@@ -436,6 +477,21 @@ function EditEntryModal({ entry, onSave, onSaveFacility, onClose, saving }) {
               <input value={author} onChange={e=>setAuthor(e.target.value)}
                 style={{width:"100%",background:"#26262c",border:"1.5px solid #35353e",borderRadius:8,padding:"10px 12px",color:"#E8EDF2",fontSize:16,outline:"none"}}/>
             </div>
+            <div style={{marginBottom:12}}>
+              <label style={{display:"block",color:"#8888a0",fontSize:11,fontWeight:600,letterSpacing:"0.08em",marginBottom:6,textTransform:"uppercase"}}>訪問時間帯（任意）</label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                {TIME_SLOTS.map(t=>{
+                  const active=visitTime===t.key;
+                  return <button key={t.key} onClick={()=>setVisitTime(active?"":t.key)}
+                    style={{padding:"5px 10px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",transition:"all 0.15s",
+                      border:active?"1.5px solid #C8956A":"1.5px solid #35353e",
+                      background:active?"#C8956A20":"#1C1C1E",
+                      color:active?"#C8956A":"#8888a0"}}>
+                    🕐 {t.label}
+                  </button>;
+                })}
+              </div>
+            </div>
             <div style={{background:"linear-gradient(135deg,#26262c,#1e2028)",borderRadius:12,padding:"12px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:14,border:"1px solid #2e2e36"}}>
               <ScoreCircle value={overall} size={56}/>
               <div style={{color:"#8888a0",fontSize:12}}>総合評価</div>
@@ -459,6 +515,39 @@ function EditEntryModal({ entry, onSave, onSaveFacility, onClose, saving }) {
                 </div>
               ))}
             </div>
+            {/* 訪問時間帯 */}
+            <div style={{marginBottom:12}}>
+              <label style={{display:"block",color:"#8888a0",fontSize:11,fontWeight:600,letterSpacing:"0.08em",marginBottom:7,textTransform:"uppercase"}}>訪問時間帯（任意）</label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                {VISIT_TIMES.map(t=>{
+                  const active=visitTime===t.key;
+                  return <button key={t.key} onClick={()=>setVisitTime(active?"":t.key)}
+                    style={{padding:"6px 10px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",
+                      border:active?"1.5px solid #4AB8D4":"1.5px solid #35353e",
+                      background:active?"#4AB8D420":"#26262c",
+                      color:active?"#4AB8D4":"#8888a0"}}>
+                    🕐 {t.label}
+                  </button>;
+                })}
+              </div>
+            </div>
+
+            {/* 訪問時間帯 */}
+            <div style={{marginBottom:12}}>
+              <label style={{display:"block",color:"#8888a0",fontSize:11,fontWeight:600,letterSpacing:"0.08em",marginBottom:6,textTransform:"uppercase"}}>訪問時間帯（任意）</label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                {TIME_SLOTS.map(t=>{
+                  const active=visitTime===t.key;
+                  return <button key={t.key} onClick={()=>setVisitTime(active?"":t.key)}
+                    style={{padding:"5px 10px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",
+                      border:active?"1.5px solid #4AB8D4":"1.5px solid #35353e",
+                      background:active?"#4AB8D420":"#26262c",
+                      color:active?"#4AB8D4":"#8888a0"}}>
+                    🕐 {t.label}
+                  </button>;
+                })}
+              </div>
+            </div>
             <div style={{marginBottom:14}}>
               <label style={{display:"block",color:"#8888a0",fontSize:11,fontWeight:600,letterSpacing:"0.08em",marginBottom:6,textTransform:"uppercase"}}>メモ</label>
               <textarea value={note} onChange={e=>setNote(e.target.value)} rows={2}
@@ -466,7 +555,7 @@ function EditEntryModal({ entry, onSave, onSaveFacility, onClose, saving }) {
             </div>
             <div style={{display:"flex",gap:10}}>
               <button onClick={onClose} style={{flex:1,padding:"12px",background:"#26262c",border:"1px solid #35353e",borderRadius:10,color:"#8888a0",fontSize:13,fontWeight:600,cursor:"pointer"}}>キャンセル</button>
-              <button onClick={()=>onSave(entry.id,{scores,note,author:author.trim()})} disabled={saving}
+              <button onClick={()=>onSave(entry.id,{scores,note,author:author.trim(),visit_time:visitTime})} disabled={saving}
                 style={{flex:2,padding:"12px",background:saving?"#2a2a2e":"linear-gradient(135deg,#4AB8D4,#2e8fa8)",border:"none",borderRadius:10,color:saving?"#5a5a6a":"#fff",fontSize:14,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
                 {saving?"💾 更新中…":"評価を更新"}
               </button>
@@ -555,6 +644,10 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
   const [author,       setAuthor]       = useState(editTarget?(editTarget.author||""):"");
   const [openHint,       setOpenHint]       = useState(null);
   const [isExisting,     setIsExisting]     = useState(false);
+  const [visitTime,      setVisitTime]      = useState(editTarget?(editTarget.visit_time||""):"");
+  const [visitTime,      setVisitTime]      = useState(editTarget?(editTarget.visit_time||""):"");
+  const [visitTime,      setVisitTime]      = useState(editTarget?(editTarget.visit_time||""):"");
+  const [visitTime,      setVisitTime]      = useState(editTarget?(editTarget.visit_time||""):"");
   const [prefecture,     setPrefecture]     = useState(editTarget?(editTarget.prefecture||""):"");
   const [fetchingPlace,  setFetchingPlace]  = useState(false);
   const [placeConfirm,   setPlaceConfirm]   = useState(null);
@@ -566,9 +659,13 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
       setAddress(editTarget.address||""); setHomepage(editTarget.homepage||"");
       setPrefecture(editTarget.prefecture||"");
       setScores(editTarget.scores); setNote(editTarget.note||""); setAuthor(editTarget.author||"");
+      setVisitTime(editTarget.visit_time||"");
+      setVisitTime(editTarget.visit_time||"");
+      setVisitTime(editTarget.visit_time||"");
+      setVisitTime(editTarget.visit_time||"");
     } else {
       setName(""); setFacilityType(""); setAddress(""); setHomepage("");
-      setPrefecture(""); setScores(empty); setNote(""); setAuthor(""); setIsExisting(false);
+      setPrefecture(""); setScores(empty); setNote(""); setAuthor(""); setVisitTime(""); setIsExisting(false);
       setPlaceConfirm(null); setFetchPlaceError("");
     }
   },[editTarget?editTarget.id:null]);
@@ -580,6 +677,7 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
       if (existing.address)       setAddress(existing.address);
       if (existing.homepage)      setHomepage(existing.homepage);
       if (existing.prefecture)    setPrefecture(existing.prefecture);
+      setVisitTime("");
     }
     setScores(empty);
   };
@@ -663,11 +761,46 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
 
 
 
-      <div style={{marginBottom:18}}>
+      <div style={{marginBottom:14}}>
         <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:7,textTransform:"uppercase"}}>投稿者名（任意）</label>
         <input value={author} onChange={e=>setAuthor(e.target.value)} placeholder="例：サウナ太郎"
           style={{...iStyle,padding:"11px 15px",fontSize:15}}
           onFocus={e=>e.target.style.borderColor="#4AB8D4"} onBlur={e=>e.target.style.borderColor="#35353e"}/>
+      </div>
+
+      {/* 訪問時間帯 */}
+      <div style={{marginBottom:18}}>
+        <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:7,textTransform:"uppercase"}}>訪問時間帯（任意）</label>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {TIME_SLOTS.map(t=>{
+            const active = visitTime===t.key;
+            return <button key={t.key} onClick={()=>setVisitTime(active?"":t.key)}
+              style={{padding:"8px 12px",borderRadius:20,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.15s",
+                border:active?"1.5px solid #4AB8D4":"1.5px solid #35353e",
+                background:active?"#4AB8D420":"#26262c",
+                color:active?"#4AB8D4":"#8888a0"}}>
+              {t.label}
+            </button>;
+          })}
+        </div>
+        {visitTime&&<div style={{marginTop:6,fontSize:11,color:"#5a5a6a"}}>※ 混雑度の参考情報として記録されます</div>}
+      </div>
+
+      {/* 訪問時間帯 */}
+      <div style={{marginBottom:18}}>
+        <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:8,textTransform:"uppercase"}}>訪問時間帯（任意）</label>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {TIME_SLOTS.map(t=>{
+            const active=visitTime===t.key;
+            return <button key={t.key} onClick={()=>setVisitTime(active?"":t.key)}
+              style={{padding:"7px 12px",borderRadius:20,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.15s",
+                border:active?"1.5px solid #C8956A":"1.5px solid #35353e",
+                background:active?"#C8956A20":"#26262c",
+                color:active?"#C8956A":"#8888a0"}}>
+              🕐 {t.label}
+            </button>;
+          })}
+        </div>
       </div>
 
       <div style={{background:"linear-gradient(135deg,#26262c,#1e2028)",borderRadius:16,padding:"16px 20px",marginBottom:18,display:"flex",alignItems:"center",gap:16,border:"1px solid #2e2e36"}}>
@@ -700,7 +833,29 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
         ))}
       </div>
 
-      <div style={{marginTop:14}}>
+      {/* 訪問時間帯 */}
+      <div style={{marginTop:14,marginBottom:14}}>
+        <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:8,textTransform:"uppercase"}}>訪問時間帯（任意）</label>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {VISIT_TIMES.map(t=>{
+            const active = visitTime===t.key;
+            return (
+              <button key={t.key} onClick={()=>setVisitTime(active?"":t.key)}
+                style={{padding:"7px 12px",borderRadius:20,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.15s",
+                  border:active?"1.5px solid #4AB8D4":"1.5px solid #35353e",
+                  background:active?"#4AB8D420":"#26262c",
+                  color:active?"#4AB8D4":"#8888a0"}}>
+                🕐 {t.label}
+              </button>
+            );
+          })}
+        </div>
+        {visitTime&&<div style={{marginTop:6,fontSize:11,color:"#5a5a6a"}}>
+          ※ 混雑度の評価は選択した時間帯を参考にしてください
+        </div>}
+      </div>
+
+      <div style={{marginTop:0}}>
         <label style={{display:"block",color:"#8888a0",fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:7,textTransform:"uppercase"}}>メモ（任意）</label>
         <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="感想や特記事項など..." rows={3}
           style={{...iStyle,padding:"11px 15px",fontSize:14,resize:"vertical"}}
@@ -709,7 +864,7 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
 
       <div style={{display:"flex",gap:10,marginTop:18}}>
         {editTarget&&<button onClick={onCancelEdit} style={{flex:1,padding:"14px",background:"#26262c",border:"1px solid #35353e",borderRadius:12,color:"#8888a0",fontSize:15,fontWeight:600,cursor:"pointer"}}>キャンセル</button>}
-        <button onClick={()=>allFilled&&!saving&&onSave({name:name.trim(),facility_type:facilityType,address,prefecture,homepage,scores,note,author:author.trim(),id:editTarget?editTarget.id:null})}
+        <button onClick={()=>allFilled&&!saving&&onSave({name:name.trim(),facility_type:facilityType,address,prefecture,homepage,scores,note,author:author.trim(),visit_time:visitTime,id:editTarget?editTarget.id:null})}
           disabled={!allFilled||saving}
           style={{flex:2,padding:"14px",background:!allFilled||saving?"#2a2a2e":"linear-gradient(135deg,#4AB8D4,#2e8fa8)",border:"none",borderRadius:12,color:!allFilled||saving?"#5a5a6a":"#fff",fontSize:16,fontWeight:700,cursor:!allFilled||saving?"not-allowed":"pointer",transition:"all 0.3s",boxShadow:allFilled&&!saving?"0 4px 20px #4AB8D430":"none"}}>
           {saving?"💾 保存中…":editTarget?"更新する":"このサウナを保存"}
@@ -1017,6 +1172,7 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving
                             <div className="entry-meta">
                               <span className="entry-author">👤 {entry.author||"匿名"}</span>
                               <span className="entry-total">総合 {avg(entry.scores).toFixed(1)}</span>
+                              {entry.visit_time&&<span style={{background:"#C8956A20",border:"1px solid #C8956A40",borderRadius:20,padding:"1px 7px",fontSize:10,color:"#C8956A",fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>🕐 {TIME_SLOTS.find(t=>t.key===entry.visit_time)?.label}</span>}
                               <span className="entry-date">{new Date(entry.created_at).toLocaleDateString("ja-JP")}</span>
                             </div>
                             <div className="entry-actions">
@@ -1098,11 +1254,11 @@ function App() {
     setSaving(true);
     try{
       if(data.id){
-        await dbUpdate(data.id,{name:data.name,facility_type:data.facility_type,prefecture:data.prefecture||"",address:data.address||"",homepage:data.homepage||"",scores:data.scores,note:data.note,author:data.author,updated_at:new Date().toISOString()});
+        await dbUpdate(data.id,{name:data.name,facility_type:data.facility_type,visit_time:data.visit_time||"",prefecture:data.prefecture||"",address:data.address||"",homepage:data.homepage||"",visit_time:data.visit_time||"",scores:data.scores,note:data.note,author:data.author,visit_time:data.visit_time||"" ,updated_at:new Date().toISOString()});
         setSaunas(p=>p.map(s=>s.id===data.id?{...s,...data}:s));
         showToast("✅ 更新しました！");setEditTarget(null);setPage("ranking");
       } else {
-        const row={id:genId(),room_id:ROOM_ID,name:data.name,facility_type:data.facility_type,prefecture:data.prefecture||"",address:data.address||"",homepage:data.homepage||"",scores:data.scores,note:data.note,author:data.author,created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+        const row={id:genId(),room_id:ROOM_ID,name:data.name,facility_type:data.facility_type,prefecture:data.prefecture||"",visit_time:data.visit_time||"",address:data.address||"",homepage:data.homepage||"",scores:data.scores,note:data.note,author:data.author,visit_time:data.visit_time||"",created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
         const ins=await dbInsert(row);setSaunas(p=>[...p,ins[0]||row]);showToast("✅ 保存しました！");
       }
     }catch(e){console.error(e);showToast("保存失敗: "+e.message,"error");}
@@ -1112,7 +1268,7 @@ function App() {
   const handleUpdateEntry=async(id,data)=>{
     setSaving(true);
     try{
-      await dbUpdate(id,{scores:data.scores,note:data.note,author:data.author,updated_at:new Date().toISOString()});
+      await dbUpdate(id,{scores:data.scores,note:data.note,author:data.author,visit_time:data.visit_time||"",updated_at:new Date().toISOString()});
       setSaunas(p=>p.map(s=>s.id===id?{...s,...data}:s));
       showToast("✅ 評価を更新しました！");
     }catch(e){showToast("更新失敗: "+e.message,"error");}
