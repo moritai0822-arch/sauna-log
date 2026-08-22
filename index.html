@@ -245,6 +245,26 @@ const TIME_SLOTS = [
   { key: "24-06", label: "24〜6時" },
 ];
 
+const TIME_SLOTS = [
+  { key: "06-09", label: "06:00〜09:00" },
+  { key: "09-12", label: "09:00〜12:00" },
+  { key: "12-15", label: "12:00〜15:00" },
+  { key: "15-18", label: "15:00〜18:00" },
+  { key: "18-21", label: "18:00〜21:00" },
+  { key: "21-24", label: "21:00〜24:00" },
+  { key: "24-06", label: "24:00〜06:00" },
+];
+
+const TIME_SLOTS = [
+  { key: "06-09", label: "6〜9時" },
+  { key: "09-12", label: "9〜12時" },
+  { key: "12-15", label: "12〜15時" },
+  { key: "15-18", label: "15〜18時" },
+  { key: "18-21", label: "18〜21時" },
+  { key: "21-24", label: "21〜24時" },
+  { key: "24-06", label: "24〜6時" },
+];
+
 const CATEGORIES = [
   { key: "sauna",    label: "サウナの質",   icon: "🔥", hint: "温度（しっかりとした熱さがあるか）、湿度（呼吸しやすい一定の湿度があるか）、テレビや音楽の有無、サ室からの景色" },
   { key: "mizuburo", label: "水風呂",       icon: "💧", hint: "温度（理想13〜18℃）、深さ、サ室からの距離" },
@@ -492,6 +512,22 @@ function EditEntryModal({ entry, onSave, onSaveFacility, onClose, saving }) {
                 })}
               </div>
             </div>
+            {/* 訪問時間帯 */}
+            <div style={{marginBottom:12}}>
+              <label style={{display:"block",color:"#8888a0",fontSize:11,fontWeight:600,letterSpacing:"0.08em",marginBottom:6,textTransform:"uppercase"}}>訪問時間帯（任意）</label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                {TIME_SLOTS.map(t=>{
+                  const active=visitTime===t.key;
+                  return <button key={t.key} onClick={()=>setVisitTime(active?"":t.key)}
+                    style={{padding:"5px 10px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",
+                      border:active?"1.5px solid #4AB8D4":"1.5px solid #35353e",
+                      background:active?"#4AB8D420":"#1C1C1E",
+                      color:active?"#4AB8D4":"#8888a0"}}>
+                    {t.label}
+                  </button>;
+                })}
+              </div>
+            </div>
             <div style={{background:"linear-gradient(135deg,#26262c,#1e2028)",borderRadius:12,padding:"12px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:14,border:"1px solid #2e2e36"}}>
               <ScoreCircle value={overall} size={56}/>
               <div style={{color:"#8888a0",fontSize:12}}>総合評価</div>
@@ -645,9 +681,6 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
   const [openHint,       setOpenHint]       = useState(null);
   const [isExisting,     setIsExisting]     = useState(false);
   const [visitTime,      setVisitTime]      = useState(editTarget?(editTarget.visit_time||""):"");
-  const [visitTime,      setVisitTime]      = useState(editTarget?(editTarget.visit_time||""):"");
-  const [visitTime,      setVisitTime]      = useState(editTarget?(editTarget.visit_time||""):"");
-  const [visitTime,      setVisitTime]      = useState(editTarget?(editTarget.visit_time||""):"");
   const [prefecture,     setPrefecture]     = useState(editTarget?(editTarget.prefecture||""):"");
   const [fetchingPlace,  setFetchingPlace]  = useState(false);
   const [placeConfirm,   setPlaceConfirm]   = useState(null);
@@ -659,6 +692,8 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas }) {
       setAddress(editTarget.address||""); setHomepage(editTarget.homepage||"");
       setPrefecture(editTarget.prefecture||"");
       setScores(editTarget.scores); setNote(editTarget.note||""); setAuthor(editTarget.author||"");
+      setVisitTime(editTarget.visit_time||"");
+      setVisitTime(editTarget.visit_time||"");
       setVisitTime(editTarget.visit_time||"");
       setVisitTime(editTarget.visit_time||"");
       setVisitTime(editTarget.visit_time||"");
