@@ -881,7 +881,6 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving
                               <span className="entry-author">👤 {entry.author||"匿名"}</span>
                               <span className="entry-total">総合 {avg(entry.scores).toFixed(1)}</span>
                               <span className="entry-date">{new Date(entry.created_at).toLocaleDateString("ja-JP")}</span>
-                              {entry.visit_time&&<span style={{background:"#2a2a3a",border:"1px solid #3a3a50",borderRadius:20,padding:"1px 6px",fontSize:9,color:"#8888a0",fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>🕐{TIME_SLOTS.find(t=>t.key===entry.visit_time)?.label}</span>}
                             </div>
                             <div className="entry-actions">
                               <button onClick={()=>setEditingEntry(entry)} className="entry-edit-btn">✏️ 編集</button>
