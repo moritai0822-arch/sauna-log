@@ -588,7 +588,7 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas, curre
       setScores(editTarget.scores); setNote(editTarget.note||""); setAuthor(editTarget.author||""); setVisitTime(editTarget.visit_time||"");
     } else {
       setName(""); setFacilityType(""); setAddress(""); setHomepage("");
-      setPrefecture(""); setScores(empty); setNote(""); setAuthor(""); setVisitTime(""); setIsExisting(false);
+      setPrefecture(""); setScores(empty); setNote(""); setAuthor(currentUser?currentUser.name:""); setVisitTime(""); setIsExisting(false);
       setPlaceConfirm(null); setFetchPlaceError("");
     }
   },[editTarget?editTarget.id:null]);
