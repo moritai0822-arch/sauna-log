@@ -58,6 +58,9 @@
 
   .modal-wrap { position: fixed; inset: 0; background: #00000090; z-index: 200; display: flex; align-items: flex-start; justify-content: center; padding: 12px; overflow-y: auto; }
   .modal-box { background: #26262c; border: 1px solid #35353e; border-radius: 16px; padding: 18px 14px; width: 100%; max-width: 480px; margin-top: 12px; margin-bottom: 12px; }
+
+  .map-box { height: calc(100vh - 290px); height: calc(100dvh - 290px); min-height: 360px; }
+  .map-box.zoom-low .pin-name { display: none; }
 </style>
 </head>
 <body>
@@ -117,24 +120,27 @@ async function dbUpdateUser(id, row) {
   return res.json();
 }
 
-async function fetchPlaceInfo(facilityName) {
+async function fetchPlaceInfo(facilityName, addressHint) {
+  const q = addressHint ? facilityName + " " + addressHint : facilityName + " サウナ 温浴";
   const searchRes = await fetch("https://places.googleapis.com/v1/places:searchText", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Goog-Api-Key": GOOGLE_API_KEY,
-      "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.websiteUri",
+      "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.websiteUri,places.location",
     },
-    body: JSON.stringify({ textQuery: facilityName + " サウナ 温浴", languageCode: "ja", regionCode: "JP", maxResultCount: 1 }),
+    body: JSON.stringify({ textQuery: q, languageCode: "ja", regionCode: "JP", maxResultCount: 1 }),
   });
   if (!searchRes.ok) throw new Error("Places API error: " + searchRes.status);
   const data = await searchRes.json();
   const place = data.places && data.places[0];
-  if (!place) return { address: null, prefecture: null, homepage: null, found: false };
+  if (!place) return { address: null, prefecture: null, homepage: null, lat: null, lng: null, found: false };
   const address = place.formattedAddress || null;
   const homepage = place.websiteUri || null;
   const prefecture = address ? extractPrefecture(address) : null;
-  return { address, prefecture, homepage, found: true };
+  const lat = place.location && typeof place.location.latitude === "number" ? place.location.latitude : null;
+  const lng = place.location && typeof place.location.longitude === "number" ? place.location.longitude : null;
+  return { address, prefecture, homepage, lat, lng, found: true };
 }
 
 function extractPrefecture(address) {
@@ -212,6 +218,7 @@ function groupByFacility(saunas) {
       const withHP   = g._entries.find(e => e.homepage); if (withHP) g.homepage = withHP.homepage;
       const withType = g._entries.find(e => e.facility_type); if (withType) g.facility_type = withType.facility_type;
       const withPref = g._entries.find(e => e.prefecture); if (withPref) g.prefecture = withPref.prefecture;
+      const withLoc  = g._entries.find(e => typeof e.lat === "number" && typeof e.lng === "number"); if (withLoc) { g.lat = withLoc.lat; g.lng = withLoc.lng; }
     }
     g._count = n;
   });
@@ -416,6 +423,8 @@ function EditEntryModal({ entry, onSave, onSaveFacility, onClose, saving }) {
   const [address,        setAddress]        = useState(entry.address||"");
   const [prefecture,     setPrefecture]     = useState(entry.prefecture||"");
   const [homepage,       setHomepage]       = useState(entry.homepage||"");
+  const [lat,            setLat]            = useState(typeof entry.lat==="number"?entry.lat:null);
+  const [lng,            setLng]            = useState(typeof entry.lng==="number"?entry.lng:null);
   const [fetchingPlace,  setFetchingPlace]  = useState(false);
   const [placeConfirm,   setPlaceConfirm]   = useState(null);
   const [fetchPlaceError,setFetchPlaceError]= useState("");
@@ -527,7 +536,7 @@ function EditEntryModal({ entry, onSave, onSaveFacility, onClose, saving }) {
                     <div style={{fontSize:12,color:"#E8EDF2"}}><span style={{color:"#5a5a6a",fontSize:11}}>HP：</span>{placeConfirm.homepage?<a href={placeConfirm.homepage} target="_blank" style={{color:"#4AB8D4",wordBreak:"break-all"}}>{placeConfirm.homepage}</a>:"なし"}</div>
                   </div>
                   <div style={{padding:"8px 13px",display:"flex",gap:8}}>
-                    <button onClick={()=>{setAddress(placeConfirm.address||"");setPrefecture(placeConfirm.prefecture||"");setHomepage(placeConfirm.homepage||"");setPlaceConfirm(null);}}
+                    <button onClick={()=>{setAddress(placeConfirm.address||"");setPrefecture(placeConfirm.prefecture||"");setHomepage(placeConfirm.homepage||"");if(typeof placeConfirm.lat==="number"){setLat(placeConfirm.lat);setLng(placeConfirm.lng);}setPlaceConfirm(null);}}
                       style={{flex:2,padding:"8px",background:"linear-gradient(135deg,#4AB8D4,#2e8fa8)",border:"none",borderRadius:7,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>✅ この情報を使う</button>
                     <button onClick={()=>setPlaceConfirm(null)} style={{flex:1,padding:"8px",background:"#26262c",border:"1px solid #35353e",borderRadius:7,color:"#8888a0",fontSize:12,cursor:"pointer"}}>キャンセル</button>
                   </div>
@@ -551,7 +560,7 @@ function EditEntryModal({ entry, onSave, onSaveFacility, onClose, saving }) {
             </div>
             <div style={{display:"flex",gap:10}}>
               <button onClick={onClose} style={{flex:1,padding:"12px",background:"#26262c",border:"1px solid #35353e",borderRadius:10,color:"#8888a0",fontSize:13,fontWeight:600,cursor:"pointer"}}>キャンセル</button>
-              <button onClick={()=>onSaveFacility(entry.id,{address,prefecture,homepage})} disabled={saving}
+              <button onClick={()=>onSaveFacility(entry.id,{address,prefecture,homepage,lat,lng})} disabled={saving}
                 style={{flex:2,padding:"12px",background:saving?"#2a2a2e":"linear-gradient(135deg,#4AB8D4,#2e8fa8)",border:"none",borderRadius:10,color:saving?"#5a5a6a":"#fff",fontSize:14,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
                 {saving?"💾 更新中…":"施設情報を更新"}
               </button>
@@ -576,6 +585,8 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas, curre
   const [prefecture,    setPrefecture]   = useState(editTarget?(editTarget.prefecture||""):"");
   const [homepage,      setHomepage]     = useState(editTarget?(editTarget.homepage||""):"");
   const [address,       setAddress]      = useState(editTarget?(editTarget.address||""):"");
+  const [lat,           setLat]          = useState(editTarget&&typeof editTarget.lat==="number"?editTarget.lat:null);
+  const [lng,           setLng]          = useState(editTarget&&typeof editTarget.lng==="number"?editTarget.lng:null);
   const [fetchingPlace, setFetchingPlace]= useState(false);
   const [placeConfirm,  setPlaceConfirm] = useState(null);
   const [fetchPlaceError,setFetchPlaceError]= useState("");
@@ -585,11 +596,12 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas, curre
       setName(editTarget.name); setFacilityType(editTarget.facility_type||"");
       setAddress(editTarget.address||""); setHomepage(editTarget.homepage||"");
       setPrefecture(editTarget.prefecture||"");
+      setLat(typeof editTarget.lat==="number"?editTarget.lat:null); setLng(typeof editTarget.lng==="number"?editTarget.lng:null);
       setScores(editTarget.scores); setNote(editTarget.note||""); setAuthor(editTarget.author||""); setVisitTime(editTarget.visit_time||"");
     } else {
       setName(""); setFacilityType(""); setAddress(""); setHomepage("");
       setPrefecture(""); setScores(empty); setNote(""); setAuthor(currentUser?currentUser.name:""); setVisitTime(""); setIsExisting(false);
-      setPlaceConfirm(null); setFetchPlaceError("");
+      setPlaceConfirm(null); setFetchPlaceError(""); setLat(null); setLng(null);
     }
   },[editTarget?editTarget.id:null]);
 
@@ -600,6 +612,7 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas, curre
       if (existing.address)       setAddress(existing.address);
       if (existing.homepage)      setHomepage(existing.homepage);
       if (existing.prefecture)    setPrefecture(existing.prefecture);
+      if (typeof existing.lat==="number"&&typeof existing.lng==="number") { setLat(existing.lat); setLng(existing.lng); }
     }
     setScores(empty);
   };
@@ -643,7 +656,7 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas, curre
                 <div style={{fontSize:13,color:"#E8EDF2"}}><span style={{color:"#5a5a6a",fontSize:11}}>公式HP：</span>{placeConfirm.homepage?<a href={placeConfirm.homepage} target="_blank" style={{color:"#4AB8D4"}}>{placeConfirm.homepage}</a>:"なし"}</div>
               </div>
               <div style={{padding:"8px 14px",display:"flex",gap:8}}>
-                <button onClick={()=>{setAddress(placeConfirm.address||"");setPrefecture(placeConfirm.prefecture||"");setHomepage(placeConfirm.homepage||"");setPlaceConfirm(null);}}
+                <button onClick={()=>{setAddress(placeConfirm.address||"");setPrefecture(placeConfirm.prefecture||"");setHomepage(placeConfirm.homepage||"");if(typeof placeConfirm.lat==="number"){setLat(placeConfirm.lat);setLng(placeConfirm.lng);}setPlaceConfirm(null);}}
                   style={{flex:2,padding:"9px",background:"linear-gradient(135deg,#4AB8D4,#2e8fa8)",border:"none",borderRadius:8,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>✅ この情報で登録</button>
                 <button onClick={()=>setPlaceConfirm(null)} style={{flex:1,padding:"9px",background:"#26262c",border:"1px solid #35353e",borderRadius:8,color:"#8888a0",fontSize:13,cursor:"pointer"}}>キャンセル</button>
               </div>
@@ -725,7 +738,7 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas, curre
 
       <div style={{display:"flex",gap:10,marginTop:18}}>
         {editTarget&&<button onClick={onCancelEdit} style={{flex:1,padding:"14px",background:"#26262c",border:"1px solid #35353e",borderRadius:12,color:"#8888a0",fontSize:15,fontWeight:600,cursor:"pointer"}}>キャンセル</button>}
-        <button onClick={()=>allFilled&&!saving&&onSave({name:name.trim(),facility_type:facilityType,address,prefecture,homepage,scores,note,author:author.trim(),visit_time:visitTime,id:editTarget?editTarget.id:null})}
+        <button onClick={()=>allFilled&&!saving&&onSave({name:name.trim(),facility_type:facilityType,address,prefecture,homepage,lat,lng,scores,note,author:author.trim(),visit_time:visitTime,id:editTarget?editTarget.id:null})}
           disabled={!allFilled||saving}
           style={{flex:2,padding:"14px",background:!allFilled||saving?"#2a2a2e":"linear-gradient(135deg,#4AB8D4,#2e8fa8)",border:"none",borderRadius:12,color:!allFilled||saving?"#5a5a6a":"#fff",fontSize:16,fontWeight:700,cursor:!allFilled||saving?"not-allowed":"pointer",transition:"all 0.3s",boxShadow:allFilled&&!saving?"0 4px 20px #4AB8D430":"none"}}>
           {saving?"💾 保存中…":editTarget?"更新する":"このサウナを保存"}
@@ -1302,6 +1315,300 @@ function MyPage({ currentUser, saunas, onLogout, onUpdateEntry, onDelete, onRena
 }
 
 
+// ===== Google Maps =====
+let _gmapsPromise = null;
+function loadGoogleMaps() {
+  if (window.google && window.google.maps && window.google.maps.importLibrary) return Promise.resolve();
+  if (_gmapsPromise) return _gmapsPromise;
+  _gmapsPromise = new Promise((resolve, reject) => {
+    window.__gmapsReady = () => resolve();
+    window.gm_authFailure = () => { if (window.__gmapsAuthCb) window.__gmapsAuthCb(); };
+    const s = document.createElement("script");
+    s.src = "https://maps.googleapis.com/maps/api/js?key=" + GOOGLE_API_KEY + "&loading=async&callback=__gmapsReady&language=ja&region=JP&v=weekly";
+    s.async = true;
+    s.onerror = () => { _gmapsPromise = null; reject(new Error("Googleマップの読み込みに失敗しました")); };
+    document.head.appendChild(s);
+  });
+  return _gmapsPromise;
+}
+
+function escHtml(t) {
+  return String(t == null ? "" : t).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function pinColor(v) { return v >= 4 ? "#2e8fa8" : v >= 3 ? "#d9822b" : "#d64545"; }
+
+function makePinClass() {
+  const G = window.google.maps;
+  function Pin(position, html, onClick) {
+    G.OverlayView.call(this);
+    this.position = position; this.html = html; this.onClick = onClick; this.div = null;
+  }
+  Pin.prototype = Object.create(G.OverlayView.prototype);
+  Pin.prototype.constructor = Pin;
+  Pin.prototype.onAdd = function () {
+    const d = document.createElement("div");
+    d.style.position = "absolute";
+    d.style.cursor = "pointer";
+    d.style.transform = "translate(-50%,-100%)";
+    d.innerHTML = this.html;
+    const self = this;
+    d.addEventListener("click", function (e) { e.stopPropagation(); if (self.onClick) self.onClick(); });
+    this.div = d;
+    this.getPanes().overlayMouseTarget.appendChild(d);
+    if (this._active) this.setActive(true);
+  };
+  Pin.prototype.draw = function () {
+    const p = this.getProjection();
+    if (!p || !this.div) return;
+    const pt = p.fromLatLngToDivPixel(this.position);
+    if (pt) { this.div.style.left = pt.x + "px"; this.div.style.top = pt.y + "px"; }
+  };
+  Pin.prototype.onRemove = function () {
+    if (this.div && this.div.parentNode) this.div.parentNode.removeChild(this.div);
+    this.div = null;
+  };
+  Pin.prototype.setActive = function (on) {
+    this._active = on;
+    if (!this.div) return;
+    this.div.style.zIndex = on ? "999" : "";
+    this.div.firstChild.style.transform = on ? "scale(1.25)" : "";
+    this.div.firstChild.style.transformOrigin = "50% 100%";
+    this.div.firstChild.style.transition = "transform 0.15s";
+  };
+  return Pin;
+}
+
+function buildPinHtml(g, score) {
+  const c = pinColor(score);
+  return '<div style="display:flex;flex-direction:column;align-items:center;">'
+    + '<div style="background:' + c + ';color:#fff;border:2px solid #fff;border-radius:16px;padding:3px 9px;font-weight:800;font-size:13px;line-height:1.2;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.45);">'
+    + '<span style="font-size:11px;opacity:.9;margin-right:3px;">サ</span>' + score.toFixed(1) + '</div>'
+    + '<div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid ' + c + ';margin-top:-1px;"></div>'
+    + '<div class="pin-name" style="margin-top:2px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:700;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000,0 0 3px #000;">' + escHtml(g.name) + '</div>'
+    + '</div>';
+}
+
+function MapPage({ saunas, onBackfill }) {
+  const mapDivRef   = useRef(null);
+  const mapRef      = useRef(null);
+  const pinsRef     = useRef([]);
+  const PinRef      = useRef(null);
+  const meRef       = useRef(null);
+  const fittedRef   = useRef(false);
+  const [ready,       setReady]       = useState(false);
+  const [mapError,    setMapError]    = useState("");
+  const [facilityFilter, setFacilityFilter] = useState("all");
+  const [prefFilter,  setPrefFilter]  = useState("");
+  const [selectedName,setSelectedName]= useState(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [progress,    setProgress]    = useState("");
+  const [locMsg,      setLocMsg]      = useState("");
+
+  const grouped = groupByFacility(saunas);
+  const withLoc = grouped.filter(g => typeof g.lat === "number" && typeof g.lng === "number");
+  const noLoc   = grouped.filter(g => !(typeof g.lat === "number" && typeof g.lng === "number"));
+  const availablePrefs = [...new Set(withLoc.map(g => g.prefecture).filter(Boolean))].sort((a, b) => PREFS_LIST.indexOf(a) - PREFS_LIST.indexOf(b));
+  const shown = withLoc
+    .filter(g => facilityFilter === "all" || g.facility_type === facilityFilter)
+    .filter(g => !prefFilter || g.prefecture === prefFilter);
+  const pointsKey = shown.map(g => g.name + "|" + g.lat + "|" + g.lng + "|" + avg(g.scores).toFixed(2)).join(";;");
+  const selected = selectedName ? grouped.find(g => g.name === selectedName) : null;
+
+  // 地図の読み込み
+  useEffect(() => {
+    let cancelled = false;
+    window.__gmapsAuthCb = () => setMapError("Googleマップの認証に失敗しました。Google Cloudで「Maps JavaScript API」を有効にし、APIキーの制限に追加してください。");
+    loadGoogleMaps().then(async () => {
+      if (cancelled) return;
+      const { Map } = await window.google.maps.importLibrary("maps");
+      if (cancelled || !mapDivRef.current) return;
+      const map = new Map(mapDivRef.current, {
+        center: { lat: 36.2, lng: 138.25 }, zoom: 5,
+        disableDefaultUI: true, zoomControl: false, gestureHandling: "greedy",
+        clickableIcons: false, backgroundColor: "#1C1C1E",
+        styles: [
+          { elementType: "geometry", stylers: [{ color: "#1d2630" }] },
+          { elementType: "labels.text.fill", stylers: [{ color: "#8a99a8" }] },
+          { elementType: "labels.text.stroke", stylers: [{ color: "#1d2630" }] },
+          { featureType: "road", elementType: "geometry", stylers: [{ color: "#2c3846" }] },
+          { featureType: "water", elementType: "geometry", stylers: [{ color: "#0f1a24" }] },
+          { featureType: "poi", stylers: [{ visibility: "off" }] },
+          { featureType: "transit", stylers: [{ visibility: "off" }] },
+        ],
+      });
+      map.addListener("click", () => setSelectedName(null));
+      const applyZoomClass = () => {
+        const z = map.getZoom() || 5;
+        if (mapDivRef.current) mapDivRef.current.classList.toggle("zoom-low", z < 11);
+      };
+      map.addListener("zoom_changed", applyZoomClass);
+      applyZoomClass();
+      PinRef.current = makePinClass();
+      mapRef.current = map;
+      setReady(true);
+    }).catch(e => { if (!cancelled) setMapError(e.message); });
+    return () => {
+      cancelled = true;
+      pinsRef.current.forEach(p => p.setMap(null)); pinsRef.current = [];
+      if (meRef.current) { meRef.current.setMap(null); meRef.current = null; }
+      mapRef.current = null; fittedRef.current = false;
+    };
+  }, []);
+
+  // ピンの描画（データが変わった時だけ作り直す）
+  useEffect(() => {
+    if (!ready || !mapRef.current || !PinRef.current) return;
+    const map = mapRef.current, Pin = PinRef.current, G = window.google.maps;
+    pinsRef.current.forEach(p => p.setMap(null));
+    pinsRef.current = shown.map(g => {
+      const pin = new Pin(new G.LatLng(g.lat, g.lng), buildPinHtml(g, avg(g.scores)), () => setSelectedName(g.name));
+      pin._name = g.name;
+      pin._active = (g.name === selectedName);
+      pin.setMap(map);
+      return pin;
+    });
+    if (shown.length > 0 && !fittedRef.current) { fitAll(); fittedRef.current = true; }
+  }, [ready, pointsKey]);
+
+  // 選択中のピンを強調
+  useEffect(() => {
+    pinsRef.current.forEach(p => p.setActive(p._name === selectedName));
+  }, [selectedName, pointsKey, ready]);
+
+  // フィルタが変わったら全体表示にフィットし直す
+  useEffect(() => { if (ready) { fitAll(); setSelectedName(null); } }, [facilityFilter, prefFilter]);
+
+  function fitAll() {
+    const map = mapRef.current; if (!map || shown.length === 0) return;
+    const G = window.google.maps;
+    if (shown.length === 1) { map.setCenter({ lat: shown[0].lat, lng: shown[0].lng }); map.setZoom(14); return; }
+    const b = new G.LatLngBounds();
+    shown.forEach(g => b.extend({ lat: g.lat, lng: g.lng }));
+    map.fitBounds(b, 60);
+  }
+
+  function goMyLocation() {
+    if (!navigator.geolocation) { setLocMsg("このブラウザでは現在地を取得できません"); return; }
+    setLocMsg("現在地を取得中…");
+    navigator.geolocation.getCurrentPosition(pos => {
+      const map = mapRef.current; if (!map) return;
+      const G = window.google.maps;
+      const ll = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      map.panTo(ll); map.setZoom(13);
+      if (meRef.current) meRef.current.setMap(null);
+      meRef.current = new G.Marker({ position: ll, map, zIndex: 1,
+        icon: { path: G.SymbolPath.CIRCLE, scale: 8, fillColor: "#4285F4", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 3 } });
+      setLocMsg("");
+    }, () => setLocMsg("現在地を取得できませんでした（位置情報の許可を確認してください）"),
+    { enableHighAccuracy: true, timeout: 10000 });
+  }
+
+  async function runBackfill() {
+    if (backfilling) return;
+    setBackfilling(true); setProgress("準備中…");
+    try {
+      const r = await onBackfill((done, total) => setProgress(done + " / " + total + " 件処理中…"));
+      setProgress("完了：" + r.ok + "件取得" + (r.ng > 0 ? "／" + r.ng + "件は見つかりませんでした" : ""));
+    } catch (e) { setProgress("エラー: " + e.message); }
+    finally { setBackfilling(false); }
+  }
+
+  function openGMap(g) {
+    const q = g.address ? g.name + " " + g.address : g.name;
+    window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q), "_blank");
+  }
+
+  const fabStyle = { width: 44, height: 44, borderRadius: "50%", background: "#26262c", border: "1px solid #35353e", color: "#E8EDF2", fontSize: 20, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center" };
+  const chip = on => ({ padding: "6px 11px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: "1px solid " + (on ? "#4AB8D4" : "#35353e"), background: on ? "#1a2a3a" : "#26262c", color: on ? "#4AB8D4" : "#8888a0" });
+
+  return (
+    <div style={{ maxWidth: 900, margin: "0 auto", width: "100%" }}>
+      {/* フィルタ */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+        <button style={chip(facilityFilter === "all")} onClick={() => setFacilityFilter("all")}>すべて</button>
+        {FACILITY_TYPES.map(t => (
+          <button key={t.key} style={chip(facilityFilter === t.key)} onClick={() => setFacilityFilter(t.key)}>{t.icon} {t.label}</button>
+        ))}
+        {availablePrefs.length > 0 && (
+          <select value={prefFilter} onChange={e => setPrefFilter(e.target.value)}
+            style={{ background: "#26262c", border: "1px solid #35353e", borderRadius: 20, padding: "5px 10px", color: prefFilter ? "#4AB8D4" : "#8888a0", fontSize: 16, outline: "none", maxWidth: 150 }}>
+            <option value="">📍 全国</option>
+            {availablePrefs.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        )}
+      </div>
+
+      {/* 位置情報未取得バナー */}
+      {noLoc.length > 0 && (
+        <div style={{ background: "#2a2418", border: "1px solid #5a4a20", borderRadius: 10, padding: "9px 12px", marginBottom: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 160, fontSize: 12, color: "#d9b46a", lineHeight: 1.5 }}>
+            {noLoc.length}施設の位置情報が未取得です{progress && <div style={{ color: "#9a9ab8", marginTop: 2 }}>{progress}</div>}
+          </div>
+          <button onClick={runBackfill} disabled={backfilling}
+            style={{ padding: "8px 14px", background: backfilling ? "#35353e" : "linear-gradient(135deg,#4AB8D4,#2e8fa8)", border: "none", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 700, cursor: backfilling ? "default" : "pointer", whiteSpace: "nowrap" }}>
+            {backfilling ? "取得中…" : "📍 一括取得"}
+          </button>
+        </div>
+      )}
+      {noLoc.length === 0 && progress && <div style={{ fontSize: 12, color: "#5adf9a", marginBottom: 8 }}>{progress}</div>}
+
+      {/* 地図 */}
+      <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", border: "1px solid #2e2e36" }}>
+        <div ref={mapDivRef} className="map-box" style={{ width: "100%", background: "#1d2630" }}/>
+        {!ready && !mapError && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#5a5a6a", fontSize: 14 }}>地図を読み込み中…</div>}
+        {mapError && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "#1C1C1E" }}>
+            <div style={{ color: "#e08888", fontSize: 13, lineHeight: 1.7, textAlign: "center" }}>⚠️ {mapError}</div>
+          </div>
+        )}
+        {ready && withLoc.length === 0 && noLoc.length === 0 && (
+          <div style={{ position: "absolute", top: 12, left: 12, right: 12, background: "#26262ccc", borderRadius: 10, padding: "8px 12px", fontSize: 12, color: "#9a9ab8", textAlign: "center" }}>まだ施設が登録されていません</div>
+        )}
+        {ready && (
+          <div style={{ position: "absolute", right: 10, top: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+            <button style={fabStyle} onClick={goMyLocation} title="現在地">🎯</button>
+            <button style={fabStyle} onClick={fitAll} title="全体表示">🗺</button>
+          </div>
+        )}
+        {locMsg && <div style={{ position: "absolute", left: 10, top: 10, right: 64, background: "#26262ce6", borderRadius: 8, padding: "6px 10px", fontSize: 11, color: "#c8c8d8" }}>{locMsg}</div>}
+
+        {/* 選択カード */}
+        {selected && (
+          <div style={{ position: "absolute", left: 10, right: 10, bottom: 10, background: "#26262c", border: "1px solid #35353e", borderRadius: 14, padding: "12px 12px 10px", boxShadow: "0 4px 16px rgba(0,0,0,.6)" }}>
+            <button onClick={() => setSelectedName(null)} style={{ position: "absolute", top: 6, right: 8, background: "none", border: "none", color: "#8888a0", fontSize: 18, cursor: "pointer", lineHeight: 1, padding: 4 }}>✕</button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0, paddingRight: 18 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 3 }}>
+                  <div style={{ color: "#E8EDF2", fontWeight: 700, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{selected.name}</div>
+                  <FacilityTypeBadge typeKey={selected.facility_type}/>
+                </div>
+                <div className="cat-scores">
+                  {CATEGORIES.map(cat => {
+                    const val = selected.scores[cat.key];
+                    return <span key={cat.key} className="cat-score-item" style={{ color: "#8888a0" }}>{cat.icon}{typeof val === "number" ? val.toFixed(selected._count > 1 ? 1 : 0) : "—"}</span>;
+                  })}
+                </div>
+                {selected.address && <div style={{ color: "#5a5a6a", fontSize: 11, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📍 {selected.address}</div>}
+                <div style={{ color: "#5a5a6a", fontSize: 10, marginTop: 2 }}>{selected._count}件の評価</div>
+              </div>
+              <ScoreCircle value={avg(selected.scores)} size={56}/>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 9 }}>
+              <button onClick={() => openGMap(selected)} style={{ flex: 1, padding: "8px 6px", background: "#1a2a3a", border: "1px solid #2a4a6a", borderRadius: 8, color: "#4AB8D4", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>📍 Googleマップ</button>
+              {selected.homepage && selected.homepage.trim() && (
+                <a href={selected.homepage} target="_blank" style={{ flex: 1, padding: "8px 6px", background: "#1a2a1a", border: "1px solid #2a5a2a", borderRadius: 8, color: "#5adf9a", fontSize: 12, fontWeight: 700, textDecoration: "none", textAlign: "center" }}>🌐 公式HP</a>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      <div style={{ fontSize: 11, color: "#5a5a6a", marginTop: 8, textAlign: "center" }}>
+        {shown.length}施設を表示中 ・ ピンの数字は総合評価（青 4.0〜 / 橙 3.0〜 / 赤 3.0未満）
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [page,        setPage]        = useState("rate");
   const [saunas,      setSaunas]      = useState([]);
@@ -1338,12 +1645,14 @@ function App() {
     setSaving(true);
     try{
       if(data.id){
-        await dbUpdate(data.id,{name:data.name,facility_type:data.facility_type,prefecture:data.prefecture||"",address:data.address||"",homepage:data.homepage||"",scores:data.scores,note:data.note,author:data.author,visit_time:data.visit_time||"",updated_at:new Date().toISOString()});
+        const locPart=(typeof data.lat==="number"&&typeof data.lng==="number")?{lat:data.lat,lng:data.lng}:{};
+        await dbUpdate(data.id,{name:data.name,facility_type:data.facility_type,prefecture:data.prefecture||"",address:data.address||"",homepage:data.homepage||"",...locPart,scores:data.scores,note:data.note,author:data.author,visit_time:data.visit_time||"",updated_at:new Date().toISOString()});
         setSaunas(p=>p.map(s=>s.id===data.id?{...s,...data}:s));
         showToast("✅ 更新しました！");setEditTarget(null);setPage("ranking");
       } else {
         const authorName = currentUser ? currentUser.name : data.author;
         const row={id:genId(),room_id:ROOM_ID,name:data.name,facility_type:data.facility_type,prefecture:data.prefecture||"",address:data.address||"",homepage:data.homepage||"",scores:data.scores,note:data.note,author:authorName,user_id:currentUser?currentUser.id:"",visit_time:data.visit_time||"",created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+        if(typeof data.lat==="number"&&typeof data.lng==="number"){row.lat=data.lat;row.lng=data.lng;}
         const ins=await dbInsert(row);setSaunas(p=>[...p,ins[0]||row]);showToast("✅ 保存しました！");
       }
     }catch(e){console.error(e);showToast("保存失敗: "+e.message,"error");}
@@ -1365,11 +1674,43 @@ function App() {
     try{
       const targetEntry=saunas.find(s=>s.id===id);
       const sameName=saunas.filter(s=>s.name.trim()===targetEntry.name.trim());
-      await Promise.all(sameName.map(s=>dbUpdate(s.id,{address:data.address||"",prefecture:data.prefecture||"",homepage:data.homepage||"",updated_at:new Date().toISOString()})));
-      setSaunas(p=>p.map(s=>s.name.trim()===targetEntry.name.trim()?{...s,...data}:s));
+      const localPatch={address:data.address||"",prefecture:data.prefecture||"",homepage:data.homepage||""};
+      if(typeof data.lat==="number"&&typeof data.lng==="number"){localPatch.lat=data.lat;localPatch.lng=data.lng;}
+      await Promise.all(sameName.map(s=>dbUpdate(s.id,{...localPatch,updated_at:new Date().toISOString()})));
+      setSaunas(p=>p.map(s=>s.name.trim()===targetEntry.name.trim()?{...s,...localPatch}:s));
       showToast("✅ 施設情報を更新しました！");
     }catch(e){showToast("施設情報更新失敗: "+e.message,"error");}
     finally{setSaving(false);}
+  };
+
+  // 位置情報（緯度経度）が未取得の施設をまとめて取得
+  const handleBackfillLocations=async(onProgress)=>{
+    const groups=groupByFacility(saunas).filter(g=>!(typeof g.lat==="number"&&typeof g.lng==="number"));
+    let ok=0,ng=0;
+    for(let i=0;i<groups.length;i++){
+      const g=groups[i];
+      if(onProgress) onProgress(i,groups.length);
+      try{
+        const info=await fetchPlaceInfo(g.name,g.address||"");
+        if(info.found&&typeof info.lat==="number"){
+          const patch={lat:info.lat,lng:info.lng};
+          if(!g.address&&info.address) patch.address=info.address;
+          if(!g.prefecture&&info.prefecture) patch.prefecture=info.prefecture;
+          if(!g.homepage&&info.homepage) patch.homepage=info.homepage;
+          await Promise.all(g._entries.map(e=>dbUpdate(e.id,{...patch,updated_at:new Date().toISOString()})));
+          setSaunas(p=>p.map(s=>s.name.trim()===g.name.trim()?{...s,...patch}:s));
+          ok++;
+        } else { ng++; }
+      }catch(e){
+        console.error(e);
+        if(/lat|lng|column/i.test(e.message||"")) throw new Error("Supabaseに lat / lng 列がありません。先にSQLを実行してください");
+        ng++;
+      }
+      await new Promise(r=>setTimeout(r,250));
+    }
+    if(onProgress) onProgress(groups.length,groups.length);
+    showToast("📍 "+ok+"件の位置情報を取得しました");
+    return {ok,ng};
   };
 
   // 名前変更（自分の全評価の author + users テーブルを更新）
@@ -1426,6 +1767,7 @@ function App() {
   const tabs=[
     {key:"rate",   label:editTarget?"✏️ 編集中":"⭐ 評価する"},
     {key:"ranking",label:"🏆 ランキング"+(facilityCount>0?" ("+facilityCount+")":"")},
+    {key:"map",    label:"🗺 マップ"},
     {key:"mypage", label:"👤 "+currentUser.name},
   ];
 
@@ -1447,7 +1789,7 @@ function App() {
             {tabs.map(tab=>(
               <button key={tab.key} onClick={()=>{setPage(tab.key);if(tab.key==="rate"&&page==="rate")setEditTarget(null);}}
                 className="tab-btn"
-                style={{fontSize:12,color:page===tab.key?"#4AB8D4":"#5a5a6a",borderBottom:page===tab.key?"2px solid #4AB8D4":"2px solid transparent"}}>
+                style={{fontSize:11,color:page===tab.key?"#4AB8D4":"#5a5a6a",borderBottom:page===tab.key?"2px solid #4AB8D4":"2px solid transparent"}}>
                 {tab.label}
               </button>
             ))}
@@ -1457,6 +1799,7 @@ function App() {
       <div className="rp-pad">
         {page==="rate"&&<RatingPage onSave={handleSave} editTarget={editTarget} onCancelEdit={()=>{setEditTarget(null);setPage("ranking");}} saving={saving} allSaunas={saunas} currentUser={currentUser}/>}
         {page==="ranking"&&<RankingPage saunas={saunas} onDelete={handleDelete} onUpdateEntry={handleUpdateEntry} onUpdateFacility={handleUpdateFacility} saving={saving}/>}
+        {page==="map"&&<MapPage saunas={saunas} onBackfill={handleBackfillLocations}/>}
         {page==="mypage"&&<MyPage currentUser={currentUser} saunas={saunas} onLogout={handleLogout} onUpdateEntry={handleUpdateEntry} onDelete={handleDelete} onRename={handleRename} onClaim={handleClaimEntries} saving={saving}/>}
       </div>
       <Toast msg={toast.msg} type={toast.type}/>
