@@ -61,6 +61,7 @@
 
   .map-box { height: calc(100vh - 290px); height: calc(100dvh - 290px); min-height: 360px; }
   .map-box.zoom-low .pin-name { display: none; }
+  .chat-box { height: calc(100vh - 250px); height: calc(100dvh - 250px); min-height: 300px; overflow-y: auto; }
 </style>
 </head>
 <body>
@@ -748,7 +749,7 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas, curre
   );
 }
 
-function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving }) {
+function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving, comments, currentUser, onAddComment, onDeleteComment, focus }) {
   const [selectedKeys,       setSelectedKeys]       = useState([]);
   const [facilityFilter,     setFacilityFilter]     = useState("all");
   const [prefFilter,         setPrefFilter]         = useState([]);
@@ -761,6 +762,15 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving
   const [searchResult,       setSearchResult]       = useState(null);
   const [searchCandidates,   setSearchCandidates]   = useState([]);
   const itemRefs = useRef({});
+
+  useEffect(()=>{
+    if(!focus) return;
+    const g = groupByFacility(saunas).find(x=>x.name.trim()===focus.name.trim());
+    const nm = g ? g.name : focus.name;
+    setFacilityFilter("all"); setPrefFilter([]); setSearchResult(null);
+    setExpandedName(nm);
+    setTimeout(()=>{ const el=itemRefs.current[nm]; if(el&&el.scrollIntoView) el.scrollIntoView({behavior:"smooth",block:"start"}); },300);
+  },[focus]);
 
   const isAllMode = selectedKeys.length===0;
   const toggleKey = k=>setSelectedKeys(p=>p.includes(k)?p.filter(x=>x!==k):[...p,k]);
@@ -1050,6 +1060,7 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving
                               ))}
                             </div>
                             {entry.note&&<div style={{marginTop:8,padding:"6px 10px",background:"#1a1a22",borderRadius:6,color:"#5a5a6a",fontSize:12,lineHeight:1.5}}>💬 {entry.note}</div>}
+                            <CommentSection entry={entry} comments={comments||[]} currentUser={currentUser} onAdd={onAddComment} onDelete={onDeleteComment} autoOpen={!!focus&&focus.entryId===entry.id}/>
                           </div>
                         </div>
                       ))}
@@ -1083,7 +1094,7 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving
   );
 }
 
-function MyPage({ currentUser, saunas, onLogout, onUpdateEntry, onDelete, onRename, onClaim, saving }) {
+function MyPage({ currentUser, saunas, onLogout, onUpdateEntry, onDelete, onRename, onClaim, saving, comments, onAddComment, onDeleteComment }) {
   // 自分の評価（user_id 一致 or author 一致）
   const mySaunas = saunas.filter(s => s.user_id === currentUser.id || s.author === currentUser.name);
   const facilityCount = new Set(mySaunas.map(s=>s.name)).size;
@@ -1219,6 +1230,7 @@ function MyPage({ currentUser, saunas, onLogout, onUpdateEntry, onDelete, onRena
                       ))}
                     </div>
                     {entry.note&&<div style={{marginTop:6,padding:"5px 8px",background:"#1a1a22",borderRadius:5,color:"#5a5a6a",fontSize:12}}>💬 {entry.note}</div>}
+                    <CommentSection entry={entry} comments={comments||[]} currentUser={currentUser} onAdd={onAddComment} onDelete={onDeleteComment}/>
                   </div>
                 </div>
               ))}
@@ -1609,6 +1621,191 @@ function MapPage({ saunas, onBackfill }) {
   );
 }
 
+// ===== コメント・チャット・通知 =====
+const COMMENTS_API = SUPABASE_URL + "/rest/v1/comments";
+const CHAT_API     = SUPABASE_URL + "/rest/v1/chat_messages";
+
+async function apiGetList(url) {
+  const res = await fetch(url, { headers: DB_HEADERS });
+  if (!res.ok) throw new Error(res.status + ": " + await res.text());
+  return res.json();
+}
+async function apiInsertRow(url, row) {
+  const res = await fetch(url, { method: "POST", headers: DB_HEADERS, body: JSON.stringify(row) });
+  if (!res.ok) throw new Error(res.status + ": " + await res.text());
+  return res.json();
+}
+async function apiDeleteRow(url, id) {
+  const res = await fetch(url + "?id=eq." + encodeURIComponent(id), { method: "DELETE", headers: DB_HEADERS });
+  if (!res.ok) throw new Error(res.status + ": " + await res.text());
+}
+async function apiPatchWhere(url, query, row) {
+  const res = await fetch(url + "?" + query, { method: "PATCH", headers: DB_HEADERS, body: JSON.stringify(row) });
+  if (!res.ok) throw new Error(res.status + ": " + await res.text());
+}
+function dbFetchComments() { return apiGetList(COMMENTS_API + "?room_id=eq." + encodeURIComponent(ROOM_ID) + "&order=created_at.asc"); }
+async function dbFetchChat() {
+  const d = await apiGetList(CHAT_API + "?room_id=eq." + encodeURIComponent(ROOM_ID) + "&order=created_at.desc&limit=200");
+  return d.reverse();
+}
+
+function lsGet(k, def) { try { const v = localStorage.getItem(k); return v == null ? def : v; } catch { return def; } }
+function lsSet(k, v)   { try { localStorage.setItem(k, v); } catch {} }
+function tsOf(iso) { const t = Date.parse(iso); return isNaN(t) ? 0 : t; }
+function maxIso(list) { let m = ""; list.forEach(x => { if (tsOf(x.created_at) > tsOf(m)) m = x.created_at; }); return m; }
+function fmtDT(iso) {
+  const d = new Date(iso); if (isNaN(d)) return "";
+  return (d.getMonth() + 1) + "/" + d.getDate() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+
+function CommentSection({ entry, comments, currentUser, onAdd, onDelete, autoOpen }) {
+  const list = comments.filter(c => c.entry_id === entry.id);
+  const [open, setOpen] = useState(!!autoOpen);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
+  useEffect(() => { if (autoOpen) setOpen(true); }, [autoOpen]);
+  const send = async () => {
+    const t = text.trim(); if (!t || sending) return;
+    setSending(true);
+    const ok = await onAdd(entry, t);
+    if (ok) setText("");
+    setSending(false);
+  };
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ background: "#1a1a22", border: "1px solid #2e2e36", borderRadius: 20, padding: "5px 12px", color: list.length ? "#4AB8D4" : "#8888a0", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+        💭 コメント{list.length > 0 ? " (" + list.length + ")" : ""} {open ? "▲" : "▼"}
+      </button>
+      {open && (
+        <div style={{ marginTop: 8 }}>
+          {list.length === 0 && <div style={{ color: "#5a5a6a", fontSize: 12, marginBottom: 8 }}>まだコメントはありません</div>}
+          {list.map(c => (
+            <div key={c.id} style={{ background: "#1a1a22", borderRadius: 8, padding: "7px 10px", marginBottom: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                <span style={{ color: "#9a9ab8", fontSize: 11, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>👤 {c.author || "匿名"}</span>
+                <span style={{ color: "#45454e", fontSize: 10, flexShrink: 0 }}>{fmtDT(c.created_at)}</span>
+                {c.user_id === currentUser.id && (
+                  <button onClick={() => { if (confirmDel === c.id) { onDelete(c.id); setConfirmDel(null); } else setConfirmDel(c.id); }}
+                    style={{ marginLeft: "auto", background: "none", border: "none", color: confirmDel === c.id ? "#e05858" : "#5a5a6a", fontSize: 11, cursor: "pointer", flexShrink: 0 }}>
+                    {confirmDel === c.id ? "削除する？" : "🗑️"}
+                  </button>
+                )}
+              </div>
+              <div style={{ color: "#E8EDF2", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{c.body}</div>
+            </div>
+          ))}
+          <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
+            <textarea value={text} onChange={e => setText(e.target.value)} rows={2} maxLength={300} placeholder="コメントを書く…"
+              style={{ flex: 1, minWidth: 0, background: "#26262c", border: "1.5px solid #35353e", borderRadius: 8, padding: "8px 10px", color: "#E8EDF2", outline: "none", resize: "none" }}/>
+            <button onClick={send} disabled={!text.trim() || sending}
+              style={{ padding: "10px 14px", background: text.trim() && !sending ? "linear-gradient(135deg,#4AB8D4,#2e8fa8)" : "#35353e", border: "none", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 700, cursor: text.trim() && !sending ? "pointer" : "default", flexShrink: 0 }}>
+              送信
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChatPage({ messages, currentUser, onSend, onDelete, ready }) {
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const boxRef = useRef(null);
+  const stickRef = useRef(true);
+  useEffect(() => { const el = boxRef.current; if (el) el.scrollTop = el.scrollHeight; }, []);
+  useEffect(() => { const el = boxRef.current; if (el && stickRef.current) el.scrollTop = el.scrollHeight; }, [messages.length]);
+  const send = async () => {
+    const t = text.trim(); if (!t || sending) return;
+    setSending(true);
+    stickRef.current = true;
+    const ok = await onSend(t);
+    if (ok) setText("");
+    setSending(false);
+  };
+  if (!ready) return (
+    <div style={{ maxWidth: 520, margin: "0 auto", textAlign: "center", padding: "50px 16px", color: "#8888a0", fontSize: 13, lineHeight: 1.8 }}>
+      <div style={{ fontSize: 40, marginBottom: 10 }}>💬</div>
+      チャットを使うには、Supabaseの準備（テーブル作成）が必要です。
+    </div>
+  );
+  let lastDay = "";
+  return (
+    <div style={{ maxWidth: 520, margin: "0 auto", width: "100%" }}>
+      <div ref={boxRef} className="chat-box"
+        onScroll={e => { const el = e.currentTarget; stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}
+        style={{ background: "#1a1a20", border: "1px solid #2e2e36", borderRadius: 14, padding: "10px 10px 4px" }}>
+        {messages.length === 0 && <div style={{ textAlign: "center", color: "#5a5a6a", fontSize: 13, padding: "40px 0" }}>まだメッセージはありません。最初の一言をどうぞ！</div>}
+        {messages.map(m => {
+          const mine = m.user_id === currentUser.id;
+          const d = new Date(m.created_at);
+          const day = isNaN(d) ? "" : (d.getMonth() + 1) + "/" + d.getDate();
+          const showDay = day !== lastDay; lastDay = day;
+          return (
+            <div key={m.id}>
+              {showDay && day && <div style={{ textAlign: "center", color: "#5a5a6a", fontSize: 10, margin: "8px 0" }}>{day}</div>}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start", marginBottom: 8 }}>
+                {!mine && <div style={{ color: "#9a9ab8", fontSize: 11, fontWeight: 700, marginBottom: 2, maxWidth: "80%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.author || "匿名"}</div>}
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 5, flexDirection: mine ? "row-reverse" : "row", maxWidth: "88%" }}>
+                  <div style={{ background: mine ? "linear-gradient(135deg,#2e8fa8,#256f85)" : "#2e2e36", color: "#E8EDF2", borderRadius: mine ? "14px 14px 4px 14px" : "14px 14px 14px 4px", padding: "8px 12px", fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", minWidth: 0 }}>{m.body}</div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start", gap: 2, flexShrink: 0 }}>
+                    <span style={{ color: "#45454e", fontSize: 9 }}>{isNaN(d) ? "" : String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0")}</span>
+                    {mine && <button onClick={() => { if (confirmDel === m.id) { onDelete(m.id); setConfirmDel(null); } else setConfirmDel(m.id); }}
+                      style={{ background: "none", border: "none", color: confirmDel === m.id ? "#e05858" : "#45454e", fontSize: 10, cursor: "pointer", padding: 0 }}>{confirmDel === m.id ? "削除？" : "🗑️"}</button>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 6, alignItems: "flex-end", marginTop: 8 }}>
+        <textarea value={text} onChange={e => setText(e.target.value)} rows={2} maxLength={500} placeholder="メッセージを入力…"
+          onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } }}
+          style={{ flex: 1, minWidth: 0, background: "#26262c", border: "1.5px solid #35353e", borderRadius: 10, padding: "9px 12px", color: "#E8EDF2", outline: "none", resize: "none" }}/>
+        <button onClick={send} disabled={!text.trim() || sending}
+          style={{ padding: "12px 16px", background: text.trim() && !sending ? "linear-gradient(135deg,#4AB8D4,#2e8fa8)" : "#35353e", border: "none", borderRadius: 10, color: "#fff", fontSize: 14, fontWeight: 700, cursor: text.trim() && !sending ? "pointer" : "default", flexShrink: 0 }}>
+          送信
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function NotificationPanel({ items, saunas, seenSnap, ready, onGo, onClose }) {
+  return (
+    <div className="modal-wrap" onClick={onClose}>
+      <div className="modal-box" style={{ background: "#1C1C1E" }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={{ color: "#E8EDF2", fontWeight: 800, fontSize: 16 }}>🔔 通知</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#8888a0", fontSize: 20, cursor: "pointer" }}>✕</button>
+        </div>
+        {!ready && <div style={{ color: "#8888a0", fontSize: 13, lineHeight: 1.7 }}>通知を使うには、Supabaseの準備（テーブル作成）が必要です。</div>}
+        {ready && items.length === 0 && <div style={{ color: "#5a5a6a", fontSize: 13, padding: "24px 0", textAlign: "center" }}>あなたの評価へのコメントはまだありません</div>}
+        {ready && items.slice(0, 30).map(c => {
+          const en = saunas.find(s => s.id === c.entry_id);
+          const isNew = tsOf(c.created_at) > tsOf(seenSnap);
+          return (
+            <div key={c.id} onClick={() => onGo(c)}
+              style={{ background: isNew ? "#1a2a3a" : "#26262c", border: "1px solid " + (isNew ? "#2a4a6a" : "#2e2e36"), borderRadius: 10, padding: "9px 12px", marginBottom: 8, cursor: "pointer" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                {isNew && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#e05858", flexShrink: 0 }}/>}
+                <span style={{ color: "#E8EDF2", fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{c.author || "匿名"}さんがコメント</span>
+                <span style={{ color: "#5a5a6a", fontSize: 10, marginLeft: "auto", flexShrink: 0 }}>{fmtDT(c.created_at)}</span>
+              </div>
+              <div style={{ color: "#4AB8D4", fontSize: 11, marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🏠 {en ? en.name : "（削除された評価）"}</div>
+              <div style={{ color: "#c8c8d8", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c.body}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [page,        setPage]        = useState("rate");
   const [saunas,      setSaunas]      = useState([]);
@@ -1621,6 +1818,16 @@ function App() {
     try { const u=sessionStorage.getItem("totonlog_user"); return u?JSON.parse(u):null; } catch{ return null; }
   });
   const pollRef = useRef(null);
+  const EPOCH = "1970-01-01T00:00:00Z";
+  const [comments,     setComments]     = useState([]);
+  const [chatMsgs,     setChatMsgs]     = useState([]);
+  const [commentsReady,setCommentsReady]= useState(true);
+  const [chatReady,    setChatReady]    = useState(true);
+  const [seenNotif,    setSeenNotif]    = useState(EPOCH);
+  const [seenChat,     setSeenChat]     = useState(EPOCH);
+  const [notifOpen,    setNotifOpen]    = useState(false);
+  const [notifSnap,    setNotifSnap]    = useState(EPOCH);
+  const [focus,        setFocus]        = useState(null);
 
   const showToast=(msg,type)=>{setToast({msg,type:type||"ok"});setTimeout(()=>setToast({msg:"",type:"ok"}),3000);};
 
@@ -1633,11 +1840,39 @@ function App() {
     try { sessionStorage.removeItem("totonlog_user"); } catch{}
   };
 
+  const loadComments=useCallback(async()=>{
+    try{const d=await dbFetchComments();setComments(d);setCommentsReady(true);}
+    catch(e){setCommentsReady(false);}
+  },[]);
+  const loadChat=useCallback(async()=>{
+    try{const d=await dbFetchChat();setChatMsgs(d);setChatReady(true);}
+    catch(e){setChatReady(false);}
+  },[]);
   const loadData=useCallback(async()=>{
     try{const d=await dbFetch();setSaunas(d);setLoadError(null);}
     catch(e){console.error(e);setLoadError(e.message);}
     finally{setLoading(false);}
+    loadComments(); loadChat();
   },[]);
+
+  useEffect(()=>{
+    if(!currentUser) return;
+    setSeenNotif(lsGet("totonlog_seen_notif_"+currentUser.id,EPOCH));
+    setSeenChat(lsGet("totonlog_seen_chat_"+currentUser.id,EPOCH));
+  },[currentUser?currentUser.id:null]);
+
+  useEffect(()=>{
+    if(page!=="chat"||!currentUser) return;
+    loadChat();
+    const t=setInterval(loadChat,4000);
+    return()=>clearInterval(t);
+  },[page]);
+
+  useEffect(()=>{
+    if(page!=="chat"||!currentUser||chatMsgs.length===0) return;
+    const m=maxIso(chatMsgs);
+    if(tsOf(m)>tsOf(seenChat)){setSeenChat(m);lsSet("totonlog_seen_chat_"+currentUser.id,m);}
+  },[page,chatMsgs]);
 
   useEffect(()=>{loadData();pollRef.current=setInterval(loadData,15000);return()=>clearInterval(pollRef.current);},[]);
 
@@ -1723,6 +1958,8 @@ function App() {
       const myEntries=saunas.filter(s=>s.user_id===currentUser.id||s.author===currentUser.name);
       await Promise.all(myEntries.map(s=>dbUpdate(s.id,{author:newName,updated_at:new Date().toISOString()})));
       setSaunas(p=>p.map(s=>(s.user_id===currentUser.id||s.author===currentUser.name)?{...s,author:newName}:s));
+      try{await apiPatchWhere(COMMENTS_API,"user_id=eq."+encodeURIComponent(currentUser.id),{author:newName});setComments(p=>p.map(x=>x.user_id===currentUser.id?{...x,author:newName}:x));}catch{}
+      try{await apiPatchWhere(CHAT_API,"user_id=eq."+encodeURIComponent(currentUser.id),{author:newName});setChatMsgs(p=>p.map(x=>x.user_id===currentUser.id?{...x,author:newName}:x));}catch{}
       const updated={...currentUser,name:newName};
       setCurrentUser(updated);
       try{sessionStorage.setItem("totonlog_user",JSON.stringify(updated));}catch{}
@@ -1742,6 +1979,25 @@ function App() {
       showToast("✅ "+targets.length+"件を紐付けました！");
     }catch(e){showToast("紐付け失敗: "+e.message,"error");}
     finally{setSaving(false);}
+  };
+
+  const handleAddComment=async(entry,text)=>{
+    const row={id:genId(),room_id:ROOM_ID,entry_id:entry.id,user_id:currentUser.id,author:currentUser.name,body:text,created_at:new Date().toISOString()};
+    try{const ins=await apiInsertRow(COMMENTS_API,row);setComments(p=>[...p,ins[0]||row]);return true;}
+    catch(e){showToast("コメント投稿失敗: "+e.message,"error");return false;}
+  };
+  const handleDeleteComment=async(id)=>{
+    try{await apiDeleteRow(COMMENTS_API,id);setComments(p=>p.filter(x=>x.id!==id));}
+    catch(e){showToast("削除失敗: "+e.message,"error");}
+  };
+  const handleSendChat=async(text)=>{
+    const row={id:genId(),room_id:ROOM_ID,user_id:currentUser.id,author:currentUser.name,body:text,created_at:new Date().toISOString()};
+    try{const ins=await apiInsertRow(CHAT_API,row);setChatMsgs(p=>[...p,ins[0]||row]);return true;}
+    catch(e){showToast("送信失敗: "+e.message,"error");return false;}
+  };
+  const handleDeleteChat=async(id)=>{
+    try{await apiDeleteRow(CHAT_API,id);setChatMsgs(p=>p.filter(x=>x.id!==id));}
+    catch(e){showToast("削除失敗: "+e.message,"error");}
   };
 
   const handleDelete=async(id)=>{
@@ -1764,11 +2020,27 @@ function App() {
   );
 
   const facilityCount=groupByFacility(saunas).length;
+  const myIds=new Set(saunas.filter(s=>s.user_id===currentUser.id||s.author===currentUser.name).map(s=>s.id));
+  const notifItems=comments.filter(x=>myIds.has(x.entry_id)&&x.user_id!==currentUser.id).sort((a,b)=>tsOf(b.created_at)-tsOf(a.created_at));
+  const unreadNotif=notifItems.filter(x=>tsOf(x.created_at)>tsOf(seenNotif)).length;
+  const unreadChat=chatMsgs.filter(m=>m.user_id!==currentUser.id&&tsOf(m.created_at)>tsOf(seenChat)).length;
+  const openNotif=()=>{
+    setNotifSnap(seenNotif); setNotifOpen(true);
+    if(notifItems.length){const m=maxIso(notifItems);if(tsOf(m)>tsOf(seenNotif)){setSeenNotif(m);lsSet("totonlog_seen_notif_"+currentUser.id,m);}}
+  };
+  const goNotif=(cm)=>{
+    const en=saunas.find(s=>s.id===cm.entry_id);
+    setNotifOpen(false);
+    if(!en) return;
+    setFocus({name:en.name,entryId:en.id,t:Date.now()});
+    setPage("ranking");
+  };
   const tabs=[
-    {key:"rate",   label:editTarget?"✏️ 編集中":"⭐ 評価する"},
-    {key:"ranking",label:"🏆 ランキング"+(facilityCount>0?" ("+facilityCount+")":"")},
-    {key:"map",    label:"🗺 マップ"},
-    {key:"mypage", label:"👤 "+currentUser.name},
+    {key:"rate",   icon:"⭐", text:editTarget?"編集中":"評価"},
+    {key:"ranking",icon:"🏆", text:"ランキング"},
+    {key:"map",    icon:"🗺", text:"マップ"},
+    {key:"chat",   icon:"💬", text:"チャット", badge:unreadChat},
+    {key:"mypage", icon:"👤", text:currentUser.name},
   ];
 
   return (
@@ -1784,13 +2056,21 @@ function App() {
                 {saving&&<span style={{color:"#4AB8D4",marginLeft:8}}>💾</span>}
               </div>
             </div>
+            <button onClick={openNotif} aria-label="通知" style={{marginLeft:"auto",position:"relative",background:"#26262c",border:"1px solid #35353e",borderRadius:"50%",width:38,height:38,fontSize:18,cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              🔔
+              {unreadNotif>0&&<span style={{position:"absolute",top:-4,right:-4,background:"#e05858",color:"#fff",borderRadius:10,minWidth:18,height:18,padding:"0 4px",fontSize:11,fontWeight:700,lineHeight:"18px",textAlign:"center"}}>{unreadNotif>99?"99+":unreadNotif}</span>}
+            </button>
           </div>
           <div style={{display:"flex"}}>
             {tabs.map(tab=>(
-              <button key={tab.key} onClick={()=>{setPage(tab.key);if(tab.key==="rate"&&page==="rate")setEditTarget(null);}}
+              <button key={tab.key} onClick={()=>{setPage(tab.key);setFocus(null);if(tab.key==="rate"&&page==="rate")setEditTarget(null);}}
                 className="tab-btn"
-                style={{fontSize:11,color:page===tab.key?"#4AB8D4":"#5a5a6a",borderBottom:page===tab.key?"2px solid #4AB8D4":"2px solid transparent"}}>
-                {tab.label}
+                style={{minWidth:0,padding:"7px 2px 8px",color:page===tab.key?"#4AB8D4":"#5a5a6a",borderBottom:page===tab.key?"2px solid #4AB8D4":"2px solid transparent"}}>
+                <span style={{display:"block",fontSize:17,lineHeight:1.25,position:"relative"}}>
+                  {tab.icon}
+                  {tab.badge>0&&<span style={{position:"absolute",top:-2,left:"calc(50% + 6px)",background:"#e05858",color:"#fff",borderRadius:10,minWidth:16,height:16,padding:"0 4px",fontSize:10,fontWeight:700,lineHeight:"16px"}}>{tab.badge>99?"99+":tab.badge}</span>}
+                </span>
+                <span style={{display:"block",fontSize:10,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tab.text}</span>
               </button>
             ))}
           </div>
@@ -1798,10 +2078,12 @@ function App() {
       </div>
       <div className="rp-pad">
         {page==="rate"&&<RatingPage onSave={handleSave} editTarget={editTarget} onCancelEdit={()=>{setEditTarget(null);setPage("ranking");}} saving={saving} allSaunas={saunas} currentUser={currentUser}/>}
-        {page==="ranking"&&<RankingPage saunas={saunas} onDelete={handleDelete} onUpdateEntry={handleUpdateEntry} onUpdateFacility={handleUpdateFacility} saving={saving}/>}
+        {page==="ranking"&&<RankingPage saunas={saunas} onDelete={handleDelete} onUpdateEntry={handleUpdateEntry} onUpdateFacility={handleUpdateFacility} saving={saving} comments={comments} currentUser={currentUser} onAddComment={handleAddComment} onDeleteComment={handleDeleteComment} focus={focus}/>}
+        {page==="chat"&&<ChatPage messages={chatMsgs} currentUser={currentUser} onSend={handleSendChat} onDelete={handleDeleteChat} ready={chatReady}/>}
         {page==="map"&&<MapPage saunas={saunas} onBackfill={handleBackfillLocations}/>}
-        {page==="mypage"&&<MyPage currentUser={currentUser} saunas={saunas} onLogout={handleLogout} onUpdateEntry={handleUpdateEntry} onDelete={handleDelete} onRename={handleRename} onClaim={handleClaimEntries} saving={saving}/>}
+        {page==="mypage"&&<MyPage currentUser={currentUser} saunas={saunas} onLogout={handleLogout} onUpdateEntry={handleUpdateEntry} onDelete={handleDelete} onRename={handleRename} onClaim={handleClaimEntries} saving={saving} comments={comments} onAddComment={handleAddComment} onDeleteComment={handleDeleteComment}/>}
       </div>
+      {notifOpen&&<NotificationPanel items={notifItems} saunas={saunas} seenSnap={notifSnap} ready={commentsReady} onGo={goNotif} onClose={()=>setNotifOpen(false)}/>}
       <Toast msg={toast.msg} type={toast.type}/>
     </div>
   );
