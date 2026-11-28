@@ -73,6 +73,8 @@ const SUPABASE_URL = "https://lnqzfphbytpouweilfnh.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxucXpmcGhieXRwb3V3ZWlsZm5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxMTA1MDQsImV4cCI6MjA5ODY4NjUwNH0.JNzYWFOzv3rMEe9YyrQLpZe9cPKX6QJKiPvI9AdgTcQ";
 const API = SUPABASE_URL + "/rest/v1/saunas";
 const ROOM_ID = "sauna-friends-room-1";
+// 管理者（全員分の評価を削除できるログイン名）
+const ADMIN_NAMES = ["M"];
 const GOOGLE_API_KEY = "AIzaSyDG9w4yLlONBso30Ogdw97ywZ4GeiVSXSY";
 
 const DB_HEADERS = {
@@ -749,7 +751,7 @@ function RatingPage({ onSave, editTarget, onCancelEdit, saving, allSaunas, curre
   );
 }
 
-function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving, comments, currentUser, onAddComment, onDeleteComment, focus }) {
+function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving, comments, currentUser, onAddComment, onDeleteComment, focus, isAdmin, onDeleteFacility }) {
   const [selectedKeys,       setSelectedKeys]       = useState([]);
   const [facilityFilter,     setFacilityFilter]     = useState("all");
   const [prefFilter,         setPrefFilter]         = useState([]);
@@ -762,6 +764,8 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving
   const [searchResult,       setSearchResult]       = useState(null);
   const [searchCandidates,   setSearchCandidates]   = useState([]);
   const itemRefs = useRef({});
+  const [confirmFacDel, setConfirmFacDel] = useState(null);
+  const isMine = (e) => !!currentUser && (e.user_id === currentUser.id || e.author === currentUser.name);
 
   useEffect(()=>{
     if(!focus) return;
@@ -1024,6 +1028,16 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving
                       <div style={{color:"#5a5a6a",fontSize:11,fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:10}}>
                         {sauna._count>1?"各評価者の詳細":"評価の詳細"}
                       </div>
+                      {isAdmin&&(
+                        <div style={{marginBottom:10}}>
+                          {confirmFacDel===sauna.name
+                            ?<div style={{display:"flex",gap:8}}>
+                              <button onClick={()=>{onDeleteFacility(sauna.name);setConfirmFacDel(null);}} style={{flex:1,padding:"9px",background:"#3a1a1a",border:"1px solid #5a2020",borderRadius:8,color:"#e05858",fontSize:12,fontWeight:700,cursor:"pointer"}}>本当に削除する（{sauna._count}件・元に戻せません）</button>
+                              <button onClick={()=>setConfirmFacDel(null)} style={{padding:"9px 14px",background:"#26262c",border:"1px solid #35353e",borderRadius:8,color:"#8888a0",fontSize:12,cursor:"pointer"}}>やめる</button>
+                            </div>
+                            :<button onClick={()=>setConfirmFacDel(sauna.name)} style={{width:"100%",padding:"8px",background:"#2a1a1a",border:"1px solid #3a2020",borderRadius:8,color:"#c07070",fontSize:12,fontWeight:600,cursor:"pointer"}}>🛡️ この施設の全評価を削除（管理者）</button>}
+                        </div>
+                      )}
                       {sauna._entries.map((entry,ei)=>(
                         <div key={entry.id} style={{background:"#22222a",borderRadius:10,border:"1px solid #2e2e36",marginBottom:8,overflow:"hidden"}}>
                           <div className="entry-header">
@@ -1033,10 +1047,10 @@ function RankingPage({ saunas, onDelete, onUpdateEntry, onUpdateFacility, saving
                               <span className="entry-date">{new Date(entry.created_at).toLocaleDateString("ja-JP")}</span>
                             </div>
                             <div className="entry-actions">
-                              <button onClick={()=>setEditingEntry(entry)} className="entry-edit-btn">✏️ 編集</button>
-                              {confirmDelete===entry.id
+                              {isMine(entry)&&<button onClick={()=>setEditingEntry(entry)} className="entry-edit-btn">✏️ 編集</button>}
+                              {(isMine(entry)||isAdmin)&&(confirmDelete===entry.id
                                 ?<button onClick={()=>{onDelete(entry.id);setConfirmDelete(null);}} className="entry-confirm-btn">確認</button>
-                                :<button onClick={()=>setConfirmDelete(entry.id)} className="entry-del-btn">🗑️</button>}
+                                :<button onClick={()=>setConfirmDelete(entry.id)} className="entry-del-btn">{isMine(entry)?"🗑️":"🛡️🗑️"}</button>)}
                             </div>
                           </div>
                           <div style={{padding:"10px 14px"}}>
@@ -2194,6 +2208,8 @@ function App() {
   const [notifOpen,    setNotifOpen]    = useState(false);
   const [notifSnap,    setNotifSnap]    = useState(EPOCH);
   const [focus,        setFocus]        = useState(null);
+  const isAdmin = !!currentUser && ADMIN_NAMES.includes(currentUser.name);
+  const isMineEntry = (e) => !!currentUser && !!e && (e.user_id === currentUser.id || e.author === currentUser.name);
 
   const showToast=(msg,type)=>{setToast({msg,type:type||"ok"});setTimeout(()=>setToast({msg:"",type:"ok"}),3000);};
 
@@ -2243,6 +2259,10 @@ function App() {
   useEffect(()=>{loadData();pollRef.current=setInterval(loadData,15000);return()=>clearInterval(pollRef.current);},[]);
 
   const handleSave=async(data)=>{
+    if(data.id){
+      const t=saunas.find(s=>s.id===data.id);
+      if(t&&!isMineEntry(t)){showToast("他の人の評価は変更できません","error");return;}
+    }
     setSaving(true);
     try{
       if(data.id){
@@ -2261,6 +2281,8 @@ function App() {
   };
 
   const handleUpdateEntry=async(id,data)=>{
+    const t=saunas.find(s=>s.id===id);
+    if(t&&!isMineEntry(t)){showToast("他の人の評価は変更できません","error");return;}
     setSaving(true);
     try{
       await dbUpdate(id,{scores:data.scores,note:data.note,author:data.author,visit_time:data.visit_time||"",updated_at:new Date().toISOString()});
@@ -2366,7 +2388,20 @@ function App() {
     catch(e){showToast("削除失敗: "+e.message,"error");}
   };
 
+  const handleDeleteFacility=async(name)=>{
+    if(!isAdmin){showToast("管理者のみ実行できます","error");return;}
+    const targets=saunas.filter(s=>s.name.trim()===name.trim());
+    try{
+      await Promise.all(targets.map(s=>dbDelete(s.id)));
+      const ids=new Set(targets.map(s=>s.id));
+      setSaunas(p=>p.filter(s=>!ids.has(s.id)));
+      showToast("🗑️ 「"+name+"」の評価を"+targets.length+"件削除しました");
+    }catch(e){showToast("削除失敗: "+e.message,"error");}
+  };
+
   const handleDelete=async(id)=>{
+    const t=saunas.find(s=>s.id===id);
+    if(t&&!(isAdmin||isMineEntry(t))){showToast("他の人の評価は削除できません","error");return;}
     try{await dbDelete(id);setSaunas(p=>p.filter(s=>s.id!==id));showToast("削除しました");}
     catch(e){showToast("削除失敗: "+e.message,"error");}
   };
@@ -2445,7 +2480,7 @@ function App() {
       </div>
       <div className="rp-pad">
         {page==="rate"&&<RatingPage onSave={handleSave} editTarget={editTarget} onCancelEdit={()=>{setEditTarget(null);setPage("ranking");}} saving={saving} allSaunas={saunas} currentUser={currentUser}/>}
-        {page==="ranking"&&<RankingPage saunas={saunas} onDelete={handleDelete} onUpdateEntry={handleUpdateEntry} onUpdateFacility={handleUpdateFacility} saving={saving} comments={comments} currentUser={currentUser} onAddComment={handleAddComment} onDeleteComment={handleDeleteComment} focus={focus}/>}
+        {page==="ranking"&&<RankingPage saunas={saunas} onDelete={handleDelete} onUpdateEntry={handleUpdateEntry} onUpdateFacility={handleUpdateFacility} saving={saving} comments={comments} currentUser={currentUser} onAddComment={handleAddComment} onDeleteComment={handleDeleteComment} focus={focus} isAdmin={isAdmin} onDeleteFacility={handleDeleteFacility}/>}
         {page==="reco"&&<RecommendPage saunas={saunas} currentUser={currentUser}/>}
         {page==="chat"&&<ChatPage messages={chatMsgs} currentUser={currentUser} onSend={handleSendChat} onDelete={handleDeleteChat} ready={chatReady}/>}
         {page==="map"&&<MapPage saunas={saunas} onBackfill={handleBackfillLocations}/>}
