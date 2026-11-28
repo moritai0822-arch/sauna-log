@@ -1806,6 +1806,372 @@ function NotificationPanel({ items, saunas, seenSnap, ready, onGo, onClose }) {
   );
 }
 
+// ===== おすすめ（相性予測・仲間の高評価・好み診断） =====
+const MOODS = [
+  { key: "totonou", label: "🌿 とにかく整いたい",    cats: ["sauna", "mizuburo", "totonoi"] },
+  { key: "empty",   label: "👥 空いている所",        cats: ["konzatsu"] },
+  { key: "cheap",   label: "💴 安く済ませたい",      cats: ["price"] },
+  { key: "bath",    label: "♨️ お風呂も楽しみたい",  cats: ["furo"] },
+  { key: "clean",   label: "🧼 清潔さ重視",          cats: ["manner"] },
+];
+
+function personKeyOf(s, currentUser) {
+  if (s.user_id === currentUser.id || s.author === currentUser.name) return "me";
+  if (s.user_id) return s.user_id;
+  return s.author ? "n:" + s.author : null;
+}
+
+function pearson(xs, ys) {
+  const n = xs.length; if (n < 3) return null;
+  const mx = xs.reduce((a, b) => a + b, 0) / n, my = ys.reduce((a, b) => a + b, 0) / n;
+  let sxy = 0, sxx = 0, syy = 0;
+  for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; }
+  if (sxx === 0 || syy === 0) return null;
+  return sxy / Math.sqrt(sxx * syy);
+}
+
+function distanceKm(lat1, lng1, lat2, lng2) {
+  const rad = x => x * Math.PI / 180, R = 6371;
+  const dLat = rad(lat2 - lat1), dLng = rad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function buildRecoModel(saunas, currentUser) {
+  const MIN_OVERLAP = 2;
+  const groups = groupByFacility(saunas);
+  const gMap = {}; groups.forEach(g => { gMap[g.name.trim()] = g; });
+  const R = {}, names = {};
+  saunas.forEach(s => {
+    const p = personKeyOf(s, currentUser); if (!p) return;
+    const f = s.name.trim();
+    if (!R[p]) R[p] = {};
+    if (!R[p][f]) R[p][f] = { n: 0, cat: {} };
+    const r = R[p][f]; r.n++;
+    CATEGORIES.forEach(c => { r.cat[c.key] = (r.cat[c.key] || 0) + (s.scores[c.key] || 0); });
+    if (p !== "me") names[p] = s.author || "匿名";
+  });
+  Object.values(R).forEach(pf => Object.values(pf).forEach(r => {
+    CATEGORIES.forEach(c => { r.cat[c.key] = r.cat[c.key] / r.n; });
+    r.overall = avg(r.cat);
+  }));
+  const me = R.me || {};
+
+  // 相性（点の付け方の近さ）
+  const sims = [];
+  Object.keys(R).forEach(p => {
+    if (p === "me") return;
+    const common = Object.keys(R[p]).filter(f => me[f]);
+    if (common.length < MIN_OVERLAP) return;
+    const d = common.reduce((a, f) => a + Math.abs(me[f].overall - R[p][f].overall), 0) / common.length;
+    sims.push({ key: p, name: names[p], sim: Math.max(0, 1 - d / 2.5), n: common.length });
+  });
+  sims.sort((a, b) => b.sim - a.sim);
+  const simOf = {}; sims.forEach(x => { simOf[x.key] = x; });
+
+  const myFacs = Object.keys(me);
+  const myCat = {}; CATEGORIES.forEach(c => { myCat[c.key] = myFacs.length ? myFacs.reduce((a, f) => a + me[f].cat[c.key], 0) / myFacs.length : 0; });
+  const myMean = myFacs.length ? avg(myCat) : 0;
+
+  // 未訪問施設の予測
+  const items = [];
+  Object.keys(gMap).forEach(f => {
+    if (me[f]) return;
+    const raters = Object.keys(R).filter(p => p !== "me" && R[p][f]);
+    if (!raters.length) return;
+    const withSim = raters.filter(p => simOf[p] && simOf[p].sim > 0);
+    const basis = withSim.length ? "match" : "avg";
+    const ws = (basis === "match" ? withSim : raters).map(p => ({ p, w: basis === "match" ? Math.pow(simOf[p].sim, 2) : 1 }));
+    const tw = ws.reduce((a, x) => a + x.w, 0);
+    // 相性が低い人の評価は鵜呑みにせず、自分の平均点に寄せる（相性が高いほど評価をそのまま採用）
+    const K = (basis === "match" && myFacs.length) ? 0.15 : 0;
+    const cat = {};
+    CATEGORIES.forEach(c => { cat[c.key] = (ws.reduce((a, x) => a + x.w * R[x.p][f].cat[c.key], 0) + K * myCat[c.key]) / (tw + K); });
+    const overall = (ws.reduce((a, x) => a + x.w * R[x.p][f].overall, 0) + K * myMean) / (tw + K);
+    const reasons = [...ws].sort((a, b) => b.w - a.w).slice(0, 3).map(x => ({ name: names[x.p], score: R[x.p][f].overall, sim: simOf[x.p] ? simOf[x.p].sim : null }));
+    const raterList = raters.map(p => ({ name: names[p], score: R[p][f].overall })).sort((a, b) => b.score - a.score);
+    items.push({ name: f, group: gMap[f], overall, cat, basis, reasons, raterList, nRaters: raters.length, nMatch: withSim.length, tw });
+  });
+
+  // 好みプロファイル
+  const othersCat = {}; let othersN = 0;
+  CATEGORIES.forEach(c => { othersCat[c.key] = 0; });
+  myFacs.forEach(f => {
+    const others = Object.keys(R).filter(p => p !== "me" && R[p][f]);
+    if (!others.length) return;
+    othersN++;
+    CATEGORIES.forEach(c => { othersCat[c.key] += others.reduce((a, p) => a + R[p][f].cat[c.key], 0) / others.length; });
+  });
+  CATEGORIES.forEach(c => { othersCat[c.key] = othersN ? othersCat[c.key] / othersN : 0; });
+  let corr = null;
+  if (myFacs.length >= 5) {
+    corr = CATEGORIES.map(c => {
+      const xs = myFacs.map(f => me[f].cat[c.key]);
+      const ys = myFacs.map(f => avg(Object.fromEntries(CATEGORIES.filter(k => k.key !== c.key).map(k => [k.key, me[f].cat[k.key]]))));
+      return { key: c.key, r: pearson(xs, ys) };
+    }).filter(x => x.r != null).sort((a, b) => b.r - a.r);
+  }
+  return { items, sims, myCount: myFacs.length, myCat, othersCat: othersN ? othersCat : null, corr };
+}
+
+function RadarChart({ series }) {
+  const cx = 160, cy = 150, Rr = 92, n = CATEGORIES.length;
+  const pt = (i, v) => { const a = -Math.PI / 2 + (2 * Math.PI * i) / n; return [cx + Math.cos(a) * Rr * (v / 5), cy + Math.sin(a) * Rr * (v / 5)]; };
+  return (
+    <svg viewBox="0 0 320 300" style={{ width: "100%", maxWidth: 340, display: "block", margin: "0 auto" }}>
+      {[1, 2, 3, 4, 5].map(l => (
+        <polygon key={l} points={CATEGORIES.map((c, i) => pt(i, l).join(",")).join(" ")} fill="none" stroke="#2e2e36" strokeWidth="1"/>
+      ))}
+      {CATEGORIES.map((c, i) => { const [x, y] = pt(i, 5); return <line key={c.key} x1={cx} y1={cy} x2={x} y2={y} stroke="#2e2e36" strokeWidth="1"/>; })}
+      {series.map((s, si) => (
+        <polygon key={si} points={CATEGORIES.map((c, i) => pt(i, s.values[c.key] || 0).join(",")).join(" ")}
+          fill={s.color + (s.dash ? "00" : "33")} stroke={s.color} strokeWidth="2" strokeDasharray={s.dash ? "5 4" : undefined}/>
+      ))}
+      {CATEGORIES.map((c, i) => {
+        const a = -Math.PI / 2 + (2 * Math.PI * i) / n;
+        const x = cx + Math.cos(a) * (Rr + 20), y = cy + Math.sin(a) * (Rr + 20);
+        const anchor = Math.cos(a) > 0.3 ? "start" : Math.cos(a) < -0.3 ? "end" : "middle";
+        return <text key={c.key} x={x} y={y} fill="#8888a0" fontSize="10" textAnchor={anchor} dominantBaseline="middle">{c.icon}{{ sauna: "サウナ", mizuburo: "水風呂", totonoi: "整い", konzatsu: "混雑", furo: "風呂", manner: "衛生", price: "値段" }[c.key] || c.label}</text>;
+      })}
+    </svg>
+  );
+}
+
+function RecommendPage({ saunas, currentUser }) {
+  const [sub, setSub] = useState("reco");
+  const [moods, setMoods] = useState([]);
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [loc, setLoc] = useState(null);
+  const [locMsg, setLocMsg] = useState("");
+  const [maxKm, setMaxKm] = useState(0);
+  const [sortMode, setSortMode] = useState("score");
+
+  const model = buildRecoModel(saunas, currentUser);
+  const moodKeys = [...new Set(MOODS.filter(m => moods.includes(m.key)).flatMap(m => m.cats))];
+  const toggleMood = k => setMoods(p => p.includes(k) ? p.filter(x => x !== k) : [...p, k]);
+
+  const getLoc = () => {
+    if (!navigator.geolocation) { setLocMsg("このブラウザでは現在地を取得できません"); return; }
+    setLocMsg("現在地を取得中…");
+    navigator.geolocation.getCurrentPosition(
+      pos => { setLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setLocMsg(""); },
+      () => setLocMsg("現在地を取得できませんでした（位置情報の許可を確認してください）"),
+      { enableHighAccuracy: false, timeout: 10000 });
+  };
+  const openGMap = (g) => {
+    const q = g.address ? g.name + " " + g.address : g.name;
+    window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q), "_blank");
+  };
+
+  const chip = on => ({ padding: "6px 11px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: "1px solid " + (on ? "#4AB8D4" : "#35353e"), background: on ? "#1a2a3a" : "#26262c", color: on ? "#4AB8D4" : "#8888a0" });
+  const subBtn = on => ({ flex: 1, padding: "9px 4px", fontSize: 12, fontWeight: 700, cursor: "pointer", border: "none", borderRadius: 8, background: on ? "#2e8fa8" : "transparent", color: on ? "#fff" : "#8888a0", whiteSpace: "nowrap" });
+
+  // ---- おすすめ一覧の組み立て ----
+  let list = model.items.map(it => {
+    const score = moodKeys.length ? moodKeys.reduce((a, k) => a + it.cat[k], 0) / moodKeys.length : it.overall;
+    const dist = loc && typeof it.group.lat === "number" ? distanceKm(loc.lat, loc.lng, it.group.lat, it.group.lng) : null;
+    return { ...it, score, dist };
+  }).filter(it => typeFilter === "all" || it.group.facility_type === typeFilter);
+  if (loc && maxKm > 0) list = list.filter(it => it.dist != null && it.dist <= maxKm);
+  list.sort((a, b) => sortMode === "near" && loc ? ((a.dist == null ? 1e9 : a.dist) - (b.dist == null ? 1e9 : b.dist)) : (b.score - a.score) || (b.nRaters - a.nRaters));
+
+  const peerList = model.items.filter(it => it.raterList[0].score >= 4)
+    .sort((a, b) => (b.raterList[0].score - a.raterList[0].score) || (b.nRaters - a.nRaters));
+
+  const confBadge = it => {
+    const lv = it.basis !== "match" ? 0 : it.tw >= 1.2 ? 2 : it.tw >= 0.4 ? 1 : 0;
+    const t = ["信頼度：低", "信頼度：中", "信頼度：高"][lv];
+    const c = ["#8888a0", "#d9b46a", "#5adf9a"][lv];
+    return <span style={{ border: "1px solid " + c + "60", color: c, borderRadius: 20, padding: "1px 7px", fontSize: 10, fontWeight: 600, whiteSpace: "nowrap" }}>{t}</span>;
+  };
+
+  const needMore = model.myCount < 2;
+
+  return (
+    <div style={{ maxWidth: 520, margin: "0 auto", width: "100%" }}>
+      <div style={{ display: "flex", gap: 4, background: "#26262c", borderRadius: 10, padding: 4, marginBottom: 12 }}>
+        <button style={subBtn(sub === "reco")} onClick={() => setSub("reco")}>✨ おすすめ</button>
+        <button style={subBtn(sub === "peer")} onClick={() => setSub("peer")}>👥 仲間の高評価</button>
+        <button style={subBtn(sub === "profile")} onClick={() => setSub("profile")}>🧬 好み診断</button>
+      </div>
+
+      {/* ===== おすすめ ===== */}
+      {sub === "reco" && (
+        <div>
+          <div style={{ background: "#1a2a3a", border: "1px solid #2a4a6a", borderRadius: 12, padding: "10px 12px", marginBottom: 10, fontSize: 12, color: "#9ac8d8", lineHeight: 1.6 }}>
+            まだ行っていない施設を、<b>あなたと点の付け方が近い仲間の評価</b>から予測しています。
+            {needMore
+              ? <div style={{ color: "#d9b46a", marginTop: 4 }}>あなたの評価が{model.myCount}施設です。2施設以上評価すると相性が出て、予測の精度が上がります。今は全体平均の目安を表示しています。</div>
+              : <div style={{ marginTop: 4, color: "#8ab0c0" }}>あなたの評価：{model.myCount}施設 ／ 相性が出せる仲間：{model.sims.length}人</div>}
+          </div>
+
+          <div style={{ color: "#8888a0", fontSize: 11, fontWeight: 600, marginBottom: 6 }}>今の気分（複数選択OK）</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+            {MOODS.map(m => <button key={m.key} style={chip(moods.includes(m.key))} onClick={() => toggleMood(m.key)}>{m.label}</button>)}
+          </div>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 8 }}>
+            <button style={chip(typeFilter === "all")} onClick={() => setTypeFilter("all")}>すべて</button>
+            {FACILITY_TYPES.map(t => <button key={t.key} style={chip(typeFilter === t.key)} onClick={() => setTypeFilter(t.key)}>{t.icon} {t.label}</button>)}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 12 }}>
+            {!loc
+              ? <button style={chip(false)} onClick={getLoc}>📍 現在地から探す</button>
+              : <>
+                  <select value={maxKm} onChange={e => setMaxKm(Number(e.target.value))}
+                    style={{ background: "#26262c", border: "1px solid #35353e", borderRadius: 20, padding: "5px 10px", color: maxKm ? "#4AB8D4" : "#8888a0", fontSize: 16, outline: "none" }}>
+                    <option value={0}>距離：指定なし</option>
+                    <option value={10}>10km以内</option>
+                    <option value={30}>30km以内</option>
+                    <option value={100}>100km以内</option>
+                  </select>
+                  <button style={chip(sortMode === "near")} onClick={() => setSortMode(s => s === "near" ? "score" : "near")}>{sortMode === "near" ? "近い順" : "スコア順"}</button>
+                </>}
+            {locMsg && <span style={{ fontSize: 11, color: "#8888a0" }}>{locMsg}</span>}
+          </div>
+          {loc && maxKm > 0 && <div style={{ fontSize: 10, color: "#5a5a6a", marginBottom: 8 }}>※ 位置情報（地図の座標）が未取得の施設は、距離の絞り込みでは表示されません</div>}
+
+          {list.length === 0
+            ? <div style={{ textAlign: "center", padding: "40px 16px", color: "#5a5a6a", fontSize: 13, lineHeight: 1.7 }}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>🔍</div>
+                条件に合う未訪問の施設がありません
+              </div>
+            : <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {list.map(it => (
+                  <div key={it.name} style={{ background: "#26262c", border: "1px solid #2e2e36", borderRadius: 14, padding: "12px 12px 10px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0 }}>
+                        <ScoreCircle value={it.score} size={52}/>
+                        <div style={{ fontSize: 9, color: "#8888a0", whiteSpace: "nowrap" }}>{moodKeys.length ? "気分" : ""}{it.basis === "match" ? "相性予測" : "全体平均"}</div>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 3 }}>
+                          <div className="rank-name" style={{ maxWidth: "100%" }}>{it.name}</div>
+                          <FacilityTypeBadge typeKey={it.group.facility_type}/>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 3 }}>
+                          {it.group.prefecture && <span style={{ background: "#1a2a3a", border: "1px solid #2a4a6a", borderRadius: 20, padding: "1px 8px", fontSize: 10, color: "#4AB8D4", fontWeight: 600 }}>📍 {it.group.prefecture}</span>}
+                          {it.dist != null && <span style={{ color: "#8888a0", fontSize: 10 }}>現在地から {it.dist < 10 ? it.dist.toFixed(1) : Math.round(it.dist)}km</span>}
+                          {confBadge(it)}
+                        </div>
+                        <div className="cat-scores">
+                          {CATEGORIES.map(c => (
+                            <span key={c.key} className="cat-score-item" style={{ color: moodKeys.includes(c.key) ? "#C8956A" : "#5a5a6a", fontWeight: moodKeys.includes(c.key) ? 700 : 400 }}>{c.icon}{it.cat[c.key].toFixed(1)}</span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 8, background: "#1a1a22", borderRadius: 8, padding: "6px 10px", fontSize: 11, color: "#9a9ab8", lineHeight: 1.6 }}>
+                      {it.basis === "match"
+                        ? <>根拠：{it.reasons.map((r, i) => <span key={i}>{i > 0 && "・"}{r.name}さん（相性{Math.round(r.sim * 100)}%）{r.score.toFixed(1)}</span>)}</>
+                        : <>{it.nRaters}人の評価の平均です。まだ相性を出せる仲間がいないため目安です。</>}
+                    </div>
+                    <button onClick={() => openGMap(it.group)} style={{ marginTop: 8, width: "100%", padding: "7px", background: "#1a2a3a", border: "1px solid #2a4a6a", borderRadius: 8, color: "#4AB8D4", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>📍 Googleマップで開く</button>
+                  </div>
+                ))}
+              </div>}
+        </div>
+      )}
+
+      {/* ===== 仲間の高評価 ===== */}
+      {sub === "peer" && (
+        <div>
+          <div style={{ color: "#8888a0", fontSize: 12, marginBottom: 10, lineHeight: 1.6 }}>あなたがまだ評価していない施設のうち、仲間の誰かが <b>★4.0以上</b> をつけているものです。</div>
+          {peerList.length === 0
+            ? <div style={{ textAlign: "center", padding: "40px 16px", color: "#5a5a6a", fontSize: 13 }}><div style={{ fontSize: 36, marginBottom: 8 }}>👥</div>今のところ該当する施設はありません</div>
+            : <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {peerList.map(it => (
+                  <div key={it.name} style={{ background: "#26262c", border: "1px solid #2e2e36", borderRadius: 14, padding: "12px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+                      <div className="rank-name" style={{ maxWidth: "100%" }}>{it.name}</div>
+                      <FacilityTypeBadge typeKey={it.group.facility_type}/>
+                      {it.group.prefecture && <span style={{ background: "#1a2a3a", border: "1px solid #2a4a6a", borderRadius: 20, padding: "1px 8px", fontSize: 10, color: "#4AB8D4", fontWeight: 600 }}>📍 {it.group.prefecture}</span>}
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                      {it.raterList.map((r, i) => (
+                        <span key={i} style={{ background: r.score >= 4 ? "#1a2a3a" : "#1a1a22", border: "1px solid " + (r.score >= 4 ? "#2a4a6a" : "#2e2e36"), borderRadius: 20, padding: "3px 10px", fontSize: 12, color: r.score >= 4 ? "#4AB8D4" : "#8888a0", fontWeight: 600 }}>
+                          👤 {r.name} {r.score.toFixed(1)}
+                        </span>
+                      ))}
+                    </div>
+                    <button onClick={() => openGMap(it.group)} style={{ width: "100%", padding: "7px", background: "#1a2a3a", border: "1px solid #2a4a6a", borderRadius: 8, color: "#4AB8D4", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>📍 Googleマップで開く</button>
+                  </div>
+                ))}
+              </div>}
+        </div>
+      )}
+
+      {/* ===== 好み診断 ===== */}
+      {sub === "profile" && (
+        <div>
+          {model.myCount === 0
+            ? <div style={{ textAlign: "center", padding: "40px 16px", color: "#5a5a6a", fontSize: 13, lineHeight: 1.7 }}><div style={{ fontSize: 36, marginBottom: 8 }}>🧬</div>評価を投稿すると、あなたの好みの傾向がここに出ます</div>
+            : <>
+                <div style={{ background: "#26262c", border: "1px solid #2e2e36", borderRadius: 14, padding: "12px 8px 10px", marginBottom: 12 }}>
+                  <div style={{ color: "#E8EDF2", fontWeight: 700, fontSize: 14, padding: "0 6px 4px" }}>あなたの評価の傾向（{model.myCount}施設）</div>
+                  <RadarChart series={[
+                    ...(model.othersCat ? [{ values: model.othersCat, color: "#C8956A", dash: true }] : []),
+                    { values: model.myCat, color: "#4AB8D4" },
+                  ]}/>
+                  <div style={{ display: "flex", justifyContent: "center", gap: 14, fontSize: 11, color: "#8888a0", marginTop: 2 }}>
+                    <span><span style={{ color: "#4AB8D4" }}>━</span> あなた</span>
+                    {model.othersCat && <span><span style={{ color: "#C8956A" }}>┅</span> 仲間の平均（同じ施設）</span>}
+                  </div>
+                  {model.othersCat && (() => {
+                    const diffs = CATEGORIES.map(c => ({ c, d: model.myCat[c.key] - model.othersCat[c.key] })).sort((a, b) => b.d - a.d);
+                    const hi = diffs[0], lo = diffs[diffs.length - 1];
+                    return (
+                      <div style={{ margin: "10px 6px 2px", fontSize: 12, color: "#9a9ab8", lineHeight: 1.7 }}>
+                        {hi.d > 0.2 && <div>👍 仲間より<b style={{ color: "#E8EDF2" }}>{hi.c.icon}{hi.c.label}</b>に甘め（+{hi.d.toFixed(1)}）</div>}
+                        {lo.d < -0.2 && <div>🧐 仲間より<b style={{ color: "#E8EDF2" }}>{lo.c.icon}{lo.c.label}</b>に厳しめ（{lo.d.toFixed(1)}）</div>}
+                        {hi.d <= 0.2 && lo.d >= -0.2 && <div>仲間とほぼ同じ感覚で評価しています</div>}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <div style={{ background: "#26262c", border: "1px solid #2e2e36", borderRadius: 14, padding: "12px", marginBottom: 12 }}>
+                  <div style={{ color: "#E8EDF2", fontWeight: 700, fontSize: 14, marginBottom: 6 }}>総合評価を左右する項目</div>
+                  {model.corr && model.corr.length > 0
+                    ? <>
+                        <div style={{ color: "#8888a0", fontSize: 11, lineHeight: 1.6, marginBottom: 8 }}>総合評価が高い施設ほど、この項目も高くなる傾向があります。</div>
+                        {model.corr.slice(0, 3).filter(x => x.r > 0.2).map(x => {
+                          const c = CATEGORIES.find(k => k.key === x.key);
+                          return (
+                            <div key={x.key} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                              <span style={{ width: 96, fontSize: 12, color: "#E8EDF2", flexShrink: 0 }}>{c.icon} {c.label}</span>
+                              <div style={{ flex: 1, height: 8, background: "#1a1a22", borderRadius: 4, overflow: "hidden" }}>
+                                <div style={{ width: Math.round(x.r * 100) + "%", height: "100%", background: "linear-gradient(90deg,#4AB8D4,#2e8fa8)" }}/>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </>
+                    : <div style={{ color: "#5a5a6a", fontSize: 12, lineHeight: 1.6 }}>評価が5施設以上たまると、あなたの評価を左右する項目が分かります（今：{model.myCount}施設）</div>}
+                </div>
+
+                <div style={{ background: "#26262c", border: "1px solid #2e2e36", borderRadius: 14, padding: "12px" }}>
+                  <div style={{ color: "#E8EDF2", fontWeight: 700, fontSize: 14, marginBottom: 6 }}>あなたと相性の良い仲間</div>
+                  {model.sims.length === 0
+                    ? <div style={{ color: "#5a5a6a", fontSize: 12, lineHeight: 1.6 }}>同じ施設を2つ以上評価した仲間がまだいません。評価する施設が増えると出てきます。</div>
+                    : model.sims.map(s => (
+                        <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                          <span style={{ width: 84, fontSize: 12, color: "#E8EDF2", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>👤 {s.name}</span>
+                          <div style={{ flex: 1, height: 8, background: "#1a1a22", borderRadius: 4, overflow: "hidden" }}>
+                            <div style={{ width: Math.round(s.sim * 100) + "%", height: "100%", background: s.sim >= 0.7 ? "#5adf9a" : s.sim >= 0.5 ? "#d9b46a" : "#e05858" }}/>
+                          </div>
+                          <span style={{ width: 84, fontSize: 11, color: "#8888a0", textAlign: "right", flexShrink: 0, whiteSpace: "nowrap" }}>{Math.round(s.sim * 100)}%（{s.n}件）</span>
+                        </div>
+                      ))}
+                  <div style={{ color: "#45454e", fontSize: 10, marginTop: 4, lineHeight: 1.5 }}>相性＝共通して評価した施設での、点の付け方の近さです（カッコ内は共通の施設数）。</div>
+                </div>
+              </>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [page,        setPage]        = useState("rate");
   const [saunas,      setSaunas]      = useState([]);
@@ -2038,6 +2404,7 @@ function App() {
   const tabs=[
     {key:"rate",   icon:"⭐", text:editTarget?"編集中":"評価"},
     {key:"ranking",icon:"🏆", text:"ランキング"},
+    {key:"reco",   icon:"✨", text:"おすすめ"},
     {key:"map",    icon:"🗺", text:"マップ"},
     {key:"chat",   icon:"💬", text:"チャット", badge:unreadChat},
     {key:"mypage", icon:"👤", text:currentUser.name},
@@ -2079,6 +2446,7 @@ function App() {
       <div className="rp-pad">
         {page==="rate"&&<RatingPage onSave={handleSave} editTarget={editTarget} onCancelEdit={()=>{setEditTarget(null);setPage("ranking");}} saving={saving} allSaunas={saunas} currentUser={currentUser}/>}
         {page==="ranking"&&<RankingPage saunas={saunas} onDelete={handleDelete} onUpdateEntry={handleUpdateEntry} onUpdateFacility={handleUpdateFacility} saving={saving} comments={comments} currentUser={currentUser} onAddComment={handleAddComment} onDeleteComment={handleDeleteComment} focus={focus}/>}
+        {page==="reco"&&<RecommendPage saunas={saunas} currentUser={currentUser}/>}
         {page==="chat"&&<ChatPage messages={chatMsgs} currentUser={currentUser} onSend={handleSendChat} onDelete={handleDeleteChat} ready={chatReady}/>}
         {page==="map"&&<MapPage saunas={saunas} onBackfill={handleBackfillLocations}/>}
         {page==="mypage"&&<MyPage currentUser={currentUser} saunas={saunas} onLogout={handleLogout} onUpdateEntry={handleUpdateEntry} onDelete={handleDelete} onRename={handleRename} onClaim={handleClaimEntries} saving={saving} comments={comments} onAddComment={handleAddComment} onDeleteComment={handleDeleteComment}/>}
